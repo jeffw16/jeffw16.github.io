@@ -16,6 +16,7 @@ import {
   splitAge,
 } from "./calc.js";
 import { parseAmount, groupDigits, formatWithCaret, formatAge, formatAgeParts } from "./format.js";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState } from "./persist.js";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -52,11 +53,50 @@ for (const id of ["spending", "swr"]) {
 }
 $("fire").addEventListener("input", () => setAmount("spending", spendingFromFire(num("fire"), num("swr") / 100)));
 
+$("reset").addEventListener("click", () => {
+  applyFormValues(DEFAULTS);
+  update();
+});
+
 form.addEventListener("input", update);
 form.addEventListener("change", update);
 form.addEventListener("submit", (e) => e.preventDefault());
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { chart?.destroy(); chart = null; update(); });
 
+
+// ---------- Saved values ----------
+
+// Form fields remembered in localStorage, by name.
+const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "spending", "swr", "fire", "portfolio", "customReturn"];
+const ALLOWED = { mode: ["contribution", "target"], portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
+
+function defaultValueOf(name) {
+  if (name === "mode") return [...form.elements.mode].find((r) => r.defaultChecked).value;
+  if (name === "portfolio") return DEFAULT_PORTFOLIO_ID;
+  return form.elements[name].defaultValue;
+}
+
+const DEFAULTS = Object.freeze(Object.fromEntries(FIELDS.map((n) => [n, defaultValueOf(n)])));
+
+function readFormValues() {
+  return Object.fromEntries(FIELDS.map((n) => [n, form.elements[n].value]));
+}
+
+function applyFormValues(values) {
+  for (const n of FIELDS) form.elements[n].value = values[n];
+}
+
+// Storage can be unavailable (private mode, blocked site data); the page works without it.
+function loadSaved() {
+  try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
+}
+
+function saveValues(values) {
+  try {
+    if (isDefaultState(values, DEFAULTS)) localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, serializeState(values));
+  } catch { /* ignore */ }
+}
 
 // ---------- Read inputs ----------
 
@@ -134,6 +174,10 @@ const cardAge = (age) => {
 // ---------- Update ----------
 
 function update() {
+  const values = readFormValues();
+  saveValues(values);
+  $("reset").disabled = isDefaultState(values, DEFAULTS);
+
   const i = readInputs();
   const isTarget = i.mode === "target";
 
@@ -333,5 +377,6 @@ function fillTable(series) {
 
 // ---------- Start ----------
 
+applyFormValues(parseSavedState(loadSaved(), DEFAULTS, ALLOWED));
 if (window.Chart) update();
 else window.addEventListener("load", update, { once: true });

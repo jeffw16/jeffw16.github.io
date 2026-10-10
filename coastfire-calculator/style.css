@@ -228,6 +228,31 @@ input[aria-invalid="true"] { border-color: var(--error); }
 
 [hidden] { display: none !important; }
 
+.form-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.reset {
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.reset:hover:not(:disabled) { border-color: var(--text-3); }
+.reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.reset:disabled { color: var(--text-3); cursor: default; }
+
 /* ---------- Results ---------- */
 
 .results { display: grid; gap: 16px; min-width: 0; }
