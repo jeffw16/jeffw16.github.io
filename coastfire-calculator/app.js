@@ -5,6 +5,7 @@ import {
   DEFAULT_MAX_AGE,
   resolveReturn,
   fireNumber,
+  spendingFromFire,
   coastTarget,
   isCoastReached,
   findCoastAge,
@@ -43,6 +44,14 @@ for (const el of form.querySelectorAll("[data-amount]")) {
   el.addEventListener("blur", () => { el.value = groupDigits(el.value).replace(/\.$/, ""); });
 }
 
+// Keep spending, withdrawal rate and FIRE number in sync. The FIRE number is
+// what the calculation uses; editing it directly back-fills spending.
+const setAmount = (id, value) => { if (Number.isFinite(value)) $(id).value = groupDigits(String(Math.round(value))); };
+for (const id of ["spending", "swr"]) {
+  $(id).addEventListener("input", () => setAmount("fire", fireNumber(num("spending"), num("swr") / 100)));
+}
+$("fire").addEventListener("input", () => setAmount("spending", spendingFromFire(num("fire"), num("swr") / 100)));
+
 form.addEventListener("input", update);
 form.addEventListener("change", update);
 form.addEventListener("submit", (e) => e.preventDefault());
@@ -68,6 +77,7 @@ function readInputs() {
     targetAge: num("targetAge"),
     spending: num("spending"),
     swr: num("swr") / 100,
+    fire: num("fire"),
     portfolio,
     annualReturn: resolveReturn(portfolio, num("customReturn") / 100),
   };
@@ -93,6 +103,7 @@ function validate(i) {
   }
   check("spending", Number.isFinite(i.spending) && i.spending > 0, "Enter your expected annual spending in retirement.");
   check("swr", Number.isFinite(i.swr) && i.swr > 0, "Enter a withdrawal rate above 0%.");
+  check("fire", Number.isFinite(i.fire) && i.fire > 0, "Enter a FIRE number above $0.");
   check("customReturn", i.portfolio !== "custom" || (Number.isFinite(num("customReturn")) && num("customReturn") > -100),
     "Enter a custom annual return.");
   return problems;
@@ -140,7 +151,7 @@ function update() {
   $("error").textContent = problems[0] ?? "";
   if (problems.length) return;
 
-  const fire = fireNumber(i.spending, i.swr);
+  const fire = i.fire;
   const coastNow = coastTarget({ fire, annualReturn: i.annualReturn, age: i.age, retirementAge: i.retirementAge });
   const alreadyCoast = isCoastReached(i.balance, coastNow);
   const monthlyContribution = isTarget

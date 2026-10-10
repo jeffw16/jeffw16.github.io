@@ -6,6 +6,7 @@ import {
   resolveReturn,
   monthlyRate,
   fireNumber,
+  spendingFromFire,
   coastTarget,
   balanceNoContrib,
   balanceWithContrib,
@@ -81,6 +82,21 @@ describe("fireNumber", () => {
     assert.ok(Number.isNaN(fireNumber(40_000, 0)));
     assert.ok(Number.isNaN(fireNumber(40_000, -0.04)));
     assert.ok(Number.isNaN(fireNumber(40_000, undefined)));
+  });
+});
+
+describe("spendingFromFire", () => {
+  it("is FIRE number × withdrawal rate", () => {
+    assert.equal(spendingFromFire(1_000_000, 0.04), 40_000);
+    close(spendingFromFire(1_500_000, 0.035), 52_500);
+  });
+  it("round-trips with fireNumber", () => {
+    close(fireNumber(spendingFromFire(1_234_567, 0.037), 0.037), 1_234_567);
+  });
+  it("is NaN for a zero, negative, or missing withdrawal rate", () => {
+    assert.ok(Number.isNaN(spendingFromFire(1e6, 0)));
+    assert.ok(Number.isNaN(spendingFromFire(1e6, -0.04)));
+    assert.ok(Number.isNaN(spendingFromFire(1e6, undefined)));
   });
 });
 
