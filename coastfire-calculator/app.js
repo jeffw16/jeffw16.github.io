@@ -14,8 +14,9 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js";
-import { parseAmount, groupDigits, formatWithCaret, formatAge, formatAgeParts } from "./format.js";
+} from "./calc.js?v=01122d71ba";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "./format.js?v=01122d71ba";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState } from "./persist.js?v=01122d71ba";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -35,6 +36,17 @@ $("portfolio").add(new Option("Custom…", "custom"));
 
 // Comma-group dollar inputs as the user types, keeping the caret in place.
 for (const el of form.querySelectorAll("[data-amount]")) {
+  // Make Backspace/Delete next to a comma remove the neighbouring digit.
+  el.addEventListener("beforeinput", (e) => {
+    const direction = { deleteContentBackward: "backward", deleteContentForward: "forward" }[e.inputType];
+    if (!direction || el.selectionStart !== el.selectionEnd) return;
+    const edit = deleteAcrossComma(el.value, el.selectionStart, direction);
+    if (!edit) return;
+    e.preventDefault();
+    el.value = edit.value;
+    el.setSelectionRange(edit.caret, edit.caret);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   el.addEventListener("input", () => {
     const { value, caret } = formatWithCaret(el.value, el.selectionStart ?? el.value.length);
     if (value === el.value) return;
@@ -52,11 +64,50 @@ for (const id of ["spending", "swr"]) {
 }
 $("fire").addEventListener("input", () => setAmount("spending", spendingFromFire(num("fire"), num("swr") / 100)));
 
+$("reset").addEventListener("click", () => {
+  applyFormValues(DEFAULTS);
+  update();
+});
+
 form.addEventListener("input", update);
 form.addEventListener("change", update);
 form.addEventListener("submit", (e) => e.preventDefault());
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { chart?.destroy(); chart = null; update(); });
 
+
+// ---------- Saved values ----------
+
+// Form fields remembered in localStorage, by name.
+const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "spending", "swr", "fire", "portfolio", "customReturn"];
+const ALLOWED = { mode: ["contribution", "target"], portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
+
+function defaultValueOf(name) {
+  if (name === "mode") return [...form.elements.mode].find((r) => r.defaultChecked).value;
+  if (name === "portfolio") return DEFAULT_PORTFOLIO_ID;
+  return form.elements[name].defaultValue;
+}
+
+const DEFAULTS = Object.freeze(Object.fromEntries(FIELDS.map((n) => [n, defaultValueOf(n)])));
+
+function readFormValues() {
+  return Object.fromEntries(FIELDS.map((n) => [n, form.elements[n].value]));
+}
+
+function applyFormValues(values) {
+  for (const n of FIELDS) form.elements[n].value = values[n];
+}
+
+// Storage can be unavailable (private mode, blocked site data); the page works without it.
+function loadSaved() {
+  try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
+}
+
+function saveValues(values) {
+  try {
+    if (isDefaultState(values, DEFAULTS)) localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, serializeState(values));
+  } catch { /* ignore */ }
+}
 
 // ---------- Read inputs ----------
 
@@ -134,6 +185,10 @@ const cardAge = (age) => {
 // ---------- Update ----------
 
 function update() {
+  const values = readFormValues();
+  saveValues(values);
+  $("reset").disabled = isDefaultState(values, DEFAULTS);
+
   const i = readInputs();
   const isTarget = i.mode === "target";
 
@@ -333,5 +388,6 @@ function fillTable(series) {
 
 // ---------- Start ----------
 
+applyFormValues(parseSavedState(loadSaved(), DEFAULTS, ALLOWED));
 if (window.Chart) update();
 else window.addEventListener("load", update, { once: true });

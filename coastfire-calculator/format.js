@@ -1,6 +1,6 @@
 // Pure display helpers: comma-grouped dollar inputs and age labels. No DOM access.
 
-import { splitAge } from "./calc.js";
+import { splitAge } from "./calc.js?v=01122d71ba";
 
 /** Parse a user-typed amount like "1,234.5" or "$50,000" into a number (NaN if empty/invalid). */
 export function parseAmount(text) {
@@ -48,4 +48,21 @@ export function formatAgeParts(age) {
   const { years, months } = splitAge(age);
   const unit = years === 1 ? "year" : "years";
   return { big: String(years), unit: months ? `${unit}, ${plural(months, "month")}` : unit };
+}
+
+/**
+ * Backspace/Delete with a collapsed caret next to a comma would only remove the
+ * comma, which formatting immediately puts back, so the key appears to do
+ * nothing. Returns the edit to apply instead (remove the digit on the far side
+ * of the comma, then re-format), or null when the native edit is fine.
+ * `direction` is "backward" (Backspace) or "forward" (Delete).
+ */
+export function deleteAcrossComma(value, caret, direction) {
+  if (direction === "backward" && caret >= 2 && value[caret - 1] === ",") {
+    return formatWithCaret(value.slice(0, caret - 2) + value.slice(caret - 1), caret - 2);
+  }
+  if (direction === "forward" && value[caret] === "," && caret + 1 < value.length) {
+    return formatWithCaret(value.slice(0, caret + 1) + value.slice(caret + 2), caret);
+  }
+  return null;
 }

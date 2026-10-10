@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=01122d71ba">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" defer></script>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=01122d71ba"></script>
 </head>
 <body>
   <main class="page">
@@ -105,6 +105,11 @@
             </div>
           </div>
         </details>
+
+        <div class="form-footer">
+          <button type="button" id="reset" class="reset">Reset to defaults</button>
+          <p class="hint">Your numbers are saved in this browser.</p>
+        </div>
       </form>
 
       <section class="results" aria-live="polite">
