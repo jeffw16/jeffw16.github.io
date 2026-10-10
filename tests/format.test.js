@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseAmount, groupDigits, formatWithCaret } from "../coastfire-calculator/format.js";
+import { parseAmount, groupDigits, formatWithCaret, formatAge, formatAgeParts } from "../coastfire-calculator/format.js";
 
 describe("parseAmount", () => {
   it("parses plain and comma-grouped numbers", () => {
@@ -70,5 +70,50 @@ describe("formatWithCaret", () => {
   });
   it("handles empty input", () => {
     assert.deepEqual(formatWithCaret("", 0), { value: "", caret: 0 });
+  });
+});
+
+describe("formatAge", () => {
+  it('renders "X years, Y months"', () => {
+    assert.equal(formatAge(40 + 6 / 12), "40 years, 6 months");
+    assert.equal(formatAge(34 + 7 / 12), "34 years, 7 months");
+  });
+  it("uses the singular for one month", () => {
+    assert.equal(formatAge(40 + 1 / 12), "40 years, 1 month");
+  });
+  it("omits months on a whole year", () => {
+    assert.equal(formatAge(60), "60 years");
+  });
+  it("uses the singular for one year", () => {
+    assert.equal(formatAge(1), "1 year");
+    assert.equal(formatAge(1 + 2 / 12), "1 year, 2 months");
+  });
+  it("rounds to the nearest month, carrying into the next year", () => {
+    assert.equal(formatAge(42.999), "43 years");
+    assert.equal(formatAge(42 + 11 / 12), "42 years, 11 months");
+  });
+  it('never renders "X and Y months"', () => {
+    for (let m = 0; m < 12 * 5; m++) {
+      const text = formatAge(30 + m / 12);
+      assert.doesNotMatch(text, / and /);
+      assert.match(text, /^\d+ years?(, \d+ months?)?$/);
+    }
+  });
+});
+
+describe("formatAgeParts", () => {
+  it("splits into a big year number and a unit with months", () => {
+    assert.deepEqual(formatAgeParts(40 + 1 / 12), { big: "40", unit: "years, 1 month" });
+    assert.deepEqual(formatAgeParts(60 + 6 / 12), { big: "60", unit: "years, 6 months" });
+  });
+  it("uses just the year unit on a whole year", () => {
+    assert.deepEqual(formatAgeParts(55), { big: "55", unit: "years" });
+    assert.deepEqual(formatAgeParts(1), { big: "1", unit: "year" });
+  });
+  it("reads the same as formatAge when joined", () => {
+    for (let m = 0; m < 12 * 5; m++) {
+      const { big, unit } = formatAgeParts(30 + m / 12);
+      assert.equal(`${big} ${unit}`, formatAge(30 + m / 12));
+    }
   });
 });

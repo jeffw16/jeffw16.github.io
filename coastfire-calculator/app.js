@@ -15,7 +15,7 @@ import {
   buildSeries,
   splitAge,
 } from "./calc.js";
-import { parseAmount, groupDigits, formatWithCaret } from "./format.js";
+import { parseAmount, groupDigits, formatWithCaret, formatAge, formatAgeParts } from "./format.js";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -111,11 +111,6 @@ function validate(i) {
 
 // ---------- Formatting ----------
 
-function ageParts(age) {
-  const { years, months } = splitAge(age);
-  return { big: String(years), sub: months ? `years, ${months} month${months === 1 ? "" : "s"}` : "years old" };
-}
-
 function setCard(id, { label, value, unit = "", sub = "", good = false }) {
   const card = $(id);
   if (label !== undefined) card.querySelector(".card-label").textContent = label;
@@ -131,10 +126,10 @@ function setCard(id, { label, value, unit = "", sub = "", good = false }) {
   card.querySelector(".card-sub").textContent = sub;
 }
 
-function ageText(age) {
-  const { years, months } = splitAge(age);
-  return months ? `${years} and ${months} month${months === 1 ? "" : "s"}` : String(years);
-}
+const cardAge = (age) => {
+  const { big, unit } = formatAgeParts(age);
+  return { value: big, unit };
+};
 
 // ---------- Update ----------
 
@@ -164,7 +159,7 @@ function update() {
   const coastCard = alreadyCoast
     ? { label: "CoastFIRE", value: "Reached ✓", good: true, sub: `You could stop contributing today and still retire at ${i.retirementAge}.` }
     : coastAge !== null
-      ? { label: "CoastFIRE age", value: ageParts(coastAge).big, unit: ageParts(coastAge).sub, sub: `Then stop contributing and coast to ${i.retirementAge}.` }
+      ? { label: "CoastFIRE age", ...cardAge(coastAge), sub: `Then stop contributing and coast to ${i.retirementAge}.` }
       : { label: "CoastFIRE age", value: `Not by ${i.retirementAge}`, sub: "Contributions aren't enough to coast before retirement." };
 
   if (isTarget) {
@@ -174,12 +169,12 @@ function update() {
       unit: "/ mo",
       good: monthlyContribution === 0,
       sub: monthlyContribution === 0
-        ? `Your current balance alone reaches your FIRE number by ${i.targetAge}${fireAge < i.targetAge - 1e-9 ? ` (on track for ${ageText(fireAge)})` : ""}.`
+        ? `Your current balance alone reaches your FIRE number by ${i.targetAge}${fireAge < i.targetAge - 1e-9 ? ` (on track for ${formatAge(fireAge)})` : ""}.`
         : `To fully retire at ${i.targetAge}.`,
     });
   } else {
     setCard("cardPrimary", fireAge !== null
-      ? { label: "Full retirement age", value: ageParts(fireAge).big, unit: ageParts(fireAge).sub, good: fireAge === i.age,
+      ? { label: "Full retirement age", ...cardAge(fireAge), good: fireAge === i.age,
           sub: fireAge === i.age ? "You've already hit your FIRE number." : `If you keep contributing ${money.format(i.monthlyContribution)}/mo.` }
       : { label: "Full retirement age", value: `Not by ${DEFAULT_MAX_AGE}`, sub: "Try a higher contribution or lower spending." });
   }
@@ -188,7 +183,7 @@ function update() {
   setCard("cardFire", {
     value: money.format(fire),
     sub: `${money.format(i.spending)}/yr at a ${pct.format(i.swr)} withdrawal rate`
-      + (isTarget && fireAge !== null ? ` · reached at ${ageText(fireAge)}` : ""),
+      + (isTarget && fireAge !== null ? ` · reached at ${formatAge(fireAge)}` : ""),
   });
   setCard("cardCoast", {
     value: money.format(coastNow),
@@ -215,13 +210,13 @@ function summaryHtml(s) {
   const coast = s.alreadyCoast
     ? `You've already reached ${b("CoastFIRE")}: even with no more contributions, your balance should grow to ${b(money.format(s.fire))} by ${b(s.retirementAge)}.`
     : s.coastAge !== null
-      ? `Contributing ${b(money.format(s.monthlyContribution) + "/mo")}, you hit CoastFIRE at ${b(ageText(s.coastAge))} and could stop contributing and still retire at ${b(s.retirementAge)}.`
+      ? `Contributing ${b(money.format(s.monthlyContribution) + "/mo")}, you hit CoastFIRE at ${b(formatAge(s.coastAge))} and could stop contributing and still retire at ${b(s.retirementAge)}.`
       : `At ${b(money.format(s.monthlyContribution) + "/mo")}, you won't reach CoastFIRE before ${b(s.retirementAge)}.`;
   const full = s.fireAge === null
     ? ` You wouldn't reach your full FIRE number of ${b(money.format(s.fire))} by ${DEFAULT_MAX_AGE}.`
     : s.fireAge === s.age
       ? ` You can already fully retire.`
-      : ` Keep contributing and you can fully retire at ${b(ageText(s.fireAge))}.`;
+      : ` Keep contributing and you can fully retire at ${b(formatAge(s.fireAge))}.`;
   return coast + full;
 }
 

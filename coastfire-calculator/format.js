@@ -1,4 +1,6 @@
-// Pure helpers for comma-grouped dollar inputs. No DOM access.
+// Pure display helpers: comma-grouped dollar inputs and age labels. No DOM access.
+
+import { splitAge } from "./calc.js";
 
 /** Parse a user-typed amount like "1,234.5" or "$50,000" into a number (NaN if empty/invalid). */
 export function parseAmount(text) {
@@ -31,4 +33,19 @@ export function formatWithCaret(value, caret) {
     pos++;
   }
   return { value: formatted, caret: pos };
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** Age label for prose: "40 years, 1 month", or "60 years" on a whole year. */
+export function formatAge(age) {
+  const { years, months } = splitAge(age);
+  return months ? `${plural(years, "year")}, ${plural(months, "month")}` : plural(years, "year");
+}
+
+/** Age split for a big-number card: { big: "40", unit: "years, 1 month" }. */
+export function formatAgeParts(age) {
+  const { years, months } = splitAge(age);
+  const unit = years === 1 ? "year" : "years";
+  return { big: String(years), unit: months ? `${unit}, ${plural(months, "month")}` : unit };
 }
