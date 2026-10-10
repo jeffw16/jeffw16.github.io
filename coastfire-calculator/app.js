@@ -14,9 +14,9 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js";
-import { parseAmount, groupDigits, formatWithCaret, formatAge, formatAgeParts } from "./format.js";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState } from "./persist.js";
+} from "./calc.js?v=01122d71ba";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "./format.js?v=01122d71ba";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState } from "./persist.js?v=01122d71ba";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -36,6 +36,17 @@ $("portfolio").add(new Option("Custom…", "custom"));
 
 // Comma-group dollar inputs as the user types, keeping the caret in place.
 for (const el of form.querySelectorAll("[data-amount]")) {
+  // Make Backspace/Delete next to a comma remove the neighbouring digit.
+  el.addEventListener("beforeinput", (e) => {
+    const direction = { deleteContentBackward: "backward", deleteContentForward: "forward" }[e.inputType];
+    if (!direction || el.selectionStart !== el.selectionEnd) return;
+    const edit = deleteAcrossComma(el.value, el.selectionStart, direction);
+    if (!edit) return;
+    e.preventDefault();
+    el.value = edit.value;
+    el.setSelectionRange(edit.caret, edit.caret);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   el.addEventListener("input", () => {
     const { value, caret } = formatWithCaret(el.value, el.selectionStart ?? el.value.length);
     if (value === el.value) return;
