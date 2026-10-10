@@ -14,6 +14,7 @@ import {
   buildSeries,
   splitAge,
 } from "./calc.js";
+import { parseAmount, groupDigits, formatWithCaret } from "./format.js";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -31,6 +32,17 @@ for (const p of PORTFOLIOS) {
 }
 $("portfolio").add(new Option("Custom…", "custom"));
 
+// Comma-group dollar inputs as the user types, keeping the caret in place.
+for (const el of form.querySelectorAll("[data-amount]")) {
+  el.addEventListener("input", () => {
+    const { value, caret } = formatWithCaret(el.value, el.selectionStart ?? el.value.length);
+    if (value === el.value) return;
+    el.value = value;
+    el.setSelectionRange(caret, caret);
+  });
+  el.addEventListener("blur", () => { el.value = groupDigits(el.value).replace(/\.$/, ""); });
+}
+
 form.addEventListener("input", update);
 form.addEventListener("change", update);
 form.addEventListener("submit", (e) => e.preventDefault());
@@ -41,8 +53,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 
 function num(id) {
   const el = $(id);
-  const v = el.value.trim() === "" ? NaN : Number(el.value);
-  return v;
+  if ("amount" in el.dataset) return parseAmount(el.value);
+  return el.value.trim() === "" ? NaN : Number(el.value);
 }
 
 function readInputs() {

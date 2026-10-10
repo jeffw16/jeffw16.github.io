@@ -41,14 +41,14 @@
         <div class="field">
           <label for="balance">Current 401(k) balance</label>
           <div class="affix" data-prefix="$">
-            <input id="balance" name="balance" type="number" inputmode="decimal" min="0" step="1000" value="50000" required>
+            <input id="balance" name="balance" type="text" inputmode="decimal" autocomplete="off" data-amount value="50,000" required>
           </div>
         </div>
 
         <div class="field" data-mode="contribution">
           <label for="contribution">Monthly contribution</label>
           <div class="affix" data-prefix="$">
-            <input id="contribution" name="contribution" type="number" inputmode="decimal" min="0" step="50" value="500">
+            <input id="contribution" name="contribution" type="text" inputmode="decimal" autocomplete="off" data-amount value="500">
           </div>
           <p class="hint">Include any employer match.</p>
         </div>
@@ -71,7 +71,7 @@
           <div class="field">
             <label for="spending">Annual spending in retirement</label>
             <div class="affix" data-prefix="$">
-              <input id="spending" name="spending" type="number" inputmode="decimal" min="0" step="1000" value="40000">
+              <input id="spending" name="spending" type="text" inputmode="decimal" autocomplete="off" data-amount value="40,000">
             </div>
             <p class="hint">In today's dollars.</p>
           </div>
