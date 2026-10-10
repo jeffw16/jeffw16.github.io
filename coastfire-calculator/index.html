@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CoastFIRE Calculator</title>
+  <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <main class="page">
+    <header class="page-header">
+      <h1>CoastFIRE Calculator</h1>
+      <p class="lede">
+        <strong>CoastFIRE</strong> is the point where your 401(k) is big enough that, with no further
+        contributions, compound growth alone carries it to your full retirement number.
+      </p>
+    </header>
+
+    <div class="layout">
+      <form id="inputs" class="panel inputs" novalidate>
+        <fieldset class="mode" aria-label="Calculator mode">
+          <legend class="visually-hidden">What do you want to find out?</legend>
+          <label class="mode-option">
+            <input type="radio" name="mode" value="contribution" checked>
+            <span>When can I retire?</span>
+          </label>
+          <label class="mode-option">
+            <input type="radio" name="mode" value="target">
+            <span>What should I contribute?</span>
+          </label>
+        </fieldset>
+
+        <div class="field">
+          <label for="age">Current age</label>
+          <input id="age" name="age" type="number" inputmode="numeric" min="16" max="99" step="1" value="30" required>
+        </div>
+
+        <div class="field">
+          <label for="balance">Current 401(k) balance</label>
+          <div class="affix" data-prefix="$">
+            <input id="balance" name="balance" type="number" inputmode="decimal" min="0" step="1000" value="50000" required>
+          </div>
+        </div>
+
+        <div class="field" data-mode="contribution">
+          <label for="contribution">Monthly contribution</label>
+          <div class="affix" data-prefix="$">
+            <input id="contribution" name="contribution" type="number" inputmode="decimal" min="0" step="50" value="500">
+          </div>
+          <p class="hint">Include any employer match.</p>
+        </div>
+
+        <div class="field" data-mode="target" hidden>
+          <label for="targetAge">Retire fully by age</label>
+          <input id="targetAge" name="targetAge" type="number" inputmode="numeric" min="17" max="100" step="1" value="55">
+          <p class="hint">When you want to stop working, fully funded.</p>
+        </div>
+
+        <div class="field">
+          <label for="retirementAge">Traditional retirement age</label>
+          <input id="retirementAge" name="retirementAge" type="number" inputmode="numeric" min="17" max="100" step="1" value="65">
+          <p class="hint">The age you'd coast to if you stop contributing (CoastFIRE horizon).</p>
+        </div>
+
+        <details class="advanced" open>
+          <summary>Assumptions</summary>
+
+          <div class="field">
+            <label for="spending">Annual spending in retirement</label>
+            <div class="affix" data-prefix="$">
+              <input id="spending" name="spending" type="number" inputmode="decimal" min="0" step="1000" value="40000">
+            </div>
+            <p class="hint">In today's dollars.</p>
+          </div>
+
+          <div class="field">
+            <label for="swr">Safe withdrawal rate</label>
+            <div class="affix" data-suffix="%">
+              <input id="swr" name="swr" type="number" inputmode="decimal" min="0.5" max="10" step="0.1" value="4">
+            </div>
+            <p class="hint">4% is the classic "4% rule".</p>
+          </div>
+
+          <div class="field">
+            <label for="portfolio">Portfolio / strategy</label>
+            <select id="portfolio" name="portfolio"></select>
+            <p class="hint" id="portfolioNote"></p>
+          </div>
+
+          <div class="field" id="customReturnField" hidden>
+            <label for="customReturn">Custom real annual return</label>
+            <div class="affix" data-suffix="%">
+              <input id="customReturn" name="customReturn" type="number" inputmode="decimal" min="-5" max="20" step="0.1" value="6.5">
+            </div>
+          </div>
+        </details>
+      </form>
+
+      <section class="results" aria-live="polite">
+        <p id="error" class="error" role="alert" hidden></p>
+
+        <div class="cards">
+          <article class="card card-hero" id="cardPrimary">
+            <h2 class="card-label"></h2>
+            <p class="card-value"></p>
+            <p class="card-sub"></p>
+          </article>
+          <article class="card card-hero" id="cardSecondary">
+            <h2 class="card-label"></h2>
+            <p class="card-value"></p>
+            <p class="card-sub"></p>
+          </article>
+          <article class="card" id="cardFire">
+            <h2 class="card-label">FIRE number</h2>
+            <p class="card-value"></p>
+            <p class="card-sub"></p>
+          </article>
+          <article class="card" id="cardCoast">
+            <h2 class="card-label">CoastFIRE number today</h2>
+            <p class="card-value"></p>
+            <p class="card-sub"></p>
+          </article>
+        </div>
+
+        <p id="summary" class="summary"></p>
+
+        <figure class="panel chart-panel">
+          <figcaption class="chart-title">401(k) balance by age</figcaption>
+          <div class="chart-wrap">
+            <canvas id="chart" role="img" aria-label="Chart of projected 401(k) balance by age"></canvas>
+          </div>
+          <details class="table-view">
+            <summary>Show as table</summary>
+            <div class="table-scroll">
+              <table id="dataTable">
+                <thead>
+                  <tr><th scope="col">Age</th><th scope="col">Current balance only</th><th scope="col">With contributions</th><th scope="col">CoastFIRE target</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
+        </figure>
+      </section>
+    </div>
+
+    <footer class="footnote">
+      <p>
+        All figures are in today's dollars using <em>real</em> (inflation-adjusted) returns, compounded monthly,
+        with contributions at the end of each month. Portfolio returns are rough long-run historical averages, not
+        guarantees. Taxes, fees, and Social Security are not modeled. This is an educational tool, not financial advice.
+      </p>
+    </footer>
+  </main>
+</body>
+</html>

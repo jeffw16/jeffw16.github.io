@@ -1,0 +1,8 @@
+{
+  "name": "jeffw16.github.io",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
