@@ -129,7 +129,7 @@ body {
   background: var(--surface-2);
 }
 
-.mode-option { position: relative; }
+.mode-option { position: relative; display: flex; }
 
 .mode-option input {
   position: absolute;
@@ -140,7 +140,11 @@ body {
 }
 
 .mode-option span {
-  display: block;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
   padding: 8px 6px;
   border-radius: 7px;
   text-align: center;
@@ -171,7 +175,7 @@ body {
   color: var(--text-3);
 }
 
-input[type="number"], select {
+input[type="number"], input[type="text"], select {
   width: 100%;
   font: inherit;
   font-size: 1rem;
@@ -183,7 +187,7 @@ input[type="number"], select {
   font-variant-numeric: tabular-nums;
 }
 
-input[type="number"]:focus, select:focus {
+input[type="number"]:focus, input[type="text"]:focus, select:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
   border-color: transparent;

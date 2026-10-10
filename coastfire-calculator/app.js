@@ -5,6 +5,7 @@ import {
   DEFAULT_MAX_AGE,
   resolveReturn,
   fireNumber,
+  spendingFromFire,
   coastTarget,
   isCoastReached,
   findCoastAge,
@@ -14,6 +15,7 @@ import {
   buildSeries,
   splitAge,
 } from "./calc.js";
+import { parseAmount, groupDigits, formatWithCaret, formatAge, formatAgeParts } from "./format.js";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -31,6 +33,25 @@ for (const p of PORTFOLIOS) {
 }
 $("portfolio").add(new Option("Custom…", "custom"));
 
+// Comma-group dollar inputs as the user types, keeping the caret in place.
+for (const el of form.querySelectorAll("[data-amount]")) {
+  el.addEventListener("input", () => {
+    const { value, caret } = formatWithCaret(el.value, el.selectionStart ?? el.value.length);
+    if (value === el.value) return;
+    el.value = value;
+    el.setSelectionRange(caret, caret);
+  });
+  el.addEventListener("blur", () => { el.value = groupDigits(el.value).replace(/\.$/, ""); });
+}
+
+// Keep spending, withdrawal rate and FIRE number in sync. The FIRE number is
+// what the calculation uses; editing it directly back-fills spending.
+const setAmount = (id, value) => { if (Number.isFinite(value)) $(id).value = groupDigits(String(Math.round(value))); };
+for (const id of ["spending", "swr"]) {
+  $(id).addEventListener("input", () => setAmount("fire", fireNumber(num("spending"), num("swr") / 100)));
+}
+$("fire").addEventListener("input", () => setAmount("spending", spendingFromFire(num("fire"), num("swr") / 100)));
+
 form.addEventListener("input", update);
 form.addEventListener("change", update);
 form.addEventListener("submit", (e) => e.preventDefault());
@@ -41,8 +62,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 
 function num(id) {
   const el = $(id);
-  const v = el.value.trim() === "" ? NaN : Number(el.value);
-  return v;
+  if ("amount" in el.dataset) return parseAmount(el.value);
+  return el.value.trim() === "" ? NaN : Number(el.value);
 }
 
 function readInputs() {
@@ -56,6 +77,7 @@ function readInputs() {
     targetAge: num("targetAge"),
     spending: num("spending"),
     swr: num("swr") / 100,
+    fire: num("fire"),
     portfolio,
     annualReturn: resolveReturn(portfolio, num("customReturn") / 100),
   };
@@ -81,17 +103,13 @@ function validate(i) {
   }
   check("spending", Number.isFinite(i.spending) && i.spending > 0, "Enter your expected annual spending in retirement.");
   check("swr", Number.isFinite(i.swr) && i.swr > 0, "Enter a withdrawal rate above 0%.");
+  check("fire", Number.isFinite(i.fire) && i.fire > 0, "Enter a FIRE number above $0.");
   check("customReturn", i.portfolio !== "custom" || (Number.isFinite(num("customReturn")) && num("customReturn") > -100),
     "Enter a custom annual return.");
   return problems;
 }
 
 // ---------- Formatting ----------
-
-function ageParts(age) {
-  const { years, months } = splitAge(age);
-  return { big: String(years), sub: months ? `years, ${months} month${months === 1 ? "" : "s"}` : "years old" };
-}
 
 function setCard(id, { label, value, unit = "", sub = "", good = false }) {
   const card = $(id);
@@ -108,10 +126,10 @@ function setCard(id, { label, value, unit = "", sub = "", good = false }) {
   card.querySelector(".card-sub").textContent = sub;
 }
 
-function ageText(age) {
-  const { years, months } = splitAge(age);
-  return months ? `${years} and ${months} month${months === 1 ? "" : "s"}` : String(years);
-}
+const cardAge = (age) => {
+  const { big, unit } = formatAgeParts(age);
+  return { value: big, unit };
+};
 
 // ---------- Update ----------
 
@@ -128,7 +146,7 @@ function update() {
   $("error").textContent = problems[0] ?? "";
   if (problems.length) return;
 
-  const fire = fireNumber(i.spending, i.swr);
+  const fire = i.fire;
   const coastNow = coastTarget({ fire, annualReturn: i.annualReturn, age: i.age, retirementAge: i.retirementAge });
   const alreadyCoast = isCoastReached(i.balance, coastNow);
   const monthlyContribution = isTarget
@@ -141,7 +159,7 @@ function update() {
   const coastCard = alreadyCoast
     ? { label: "CoastFIRE", value: "Reached ✓", good: true, sub: `You could stop contributing today and still retire at ${i.retirementAge}.` }
     : coastAge !== null
-      ? { label: "CoastFIRE age", value: ageParts(coastAge).big, unit: ageParts(coastAge).sub, sub: `Then stop contributing and coast to ${i.retirementAge}.` }
+      ? { label: "CoastFIRE age", ...cardAge(coastAge), sub: `Then stop contributing and coast to ${i.retirementAge}.` }
       : { label: "CoastFIRE age", value: `Not by ${i.retirementAge}`, sub: "Contributions aren't enough to coast before retirement." };
 
   if (isTarget) {
@@ -151,12 +169,12 @@ function update() {
       unit: "/ mo",
       good: monthlyContribution === 0,
       sub: monthlyContribution === 0
-        ? `Your current balance alone reaches your FIRE number by ${i.targetAge}${fireAge < i.targetAge - 1e-9 ? ` (on track for ${ageText(fireAge)})` : ""}.`
+        ? `Your current balance alone reaches your FIRE number by ${i.targetAge}${fireAge < i.targetAge - 1e-9 ? ` (on track for ${formatAge(fireAge)})` : ""}.`
         : `To fully retire at ${i.targetAge}.`,
     });
   } else {
     setCard("cardPrimary", fireAge !== null
-      ? { label: "Full retirement age", value: ageParts(fireAge).big, unit: ageParts(fireAge).sub, good: fireAge === i.age,
+      ? { label: "Full retirement age", ...cardAge(fireAge), good: fireAge === i.age,
           sub: fireAge === i.age ? "You've already hit your FIRE number." : `If you keep contributing ${money.format(i.monthlyContribution)}/mo.` }
       : { label: "Full retirement age", value: `Not by ${DEFAULT_MAX_AGE}`, sub: "Try a higher contribution or lower spending." });
   }
@@ -165,7 +183,7 @@ function update() {
   setCard("cardFire", {
     value: money.format(fire),
     sub: `${money.format(i.spending)}/yr at a ${pct.format(i.swr)} withdrawal rate`
-      + (isTarget && fireAge !== null ? ` · reached at ${ageText(fireAge)}` : ""),
+      + (isTarget && fireAge !== null ? ` · reached at ${formatAge(fireAge)}` : ""),
   });
   setCard("cardCoast", {
     value: money.format(coastNow),
@@ -192,13 +210,13 @@ function summaryHtml(s) {
   const coast = s.alreadyCoast
     ? `You've already reached ${b("CoastFIRE")}: even with no more contributions, your balance should grow to ${b(money.format(s.fire))} by ${b(s.retirementAge)}.`
     : s.coastAge !== null
-      ? `Contributing ${b(money.format(s.monthlyContribution) + "/mo")}, you hit CoastFIRE at ${b(ageText(s.coastAge))} and could stop contributing and still retire at ${b(s.retirementAge)}.`
+      ? `Contributing ${b(money.format(s.monthlyContribution) + "/mo")}, you hit CoastFIRE at ${b(formatAge(s.coastAge))} and could stop contributing and still retire at ${b(s.retirementAge)}.`
       : `At ${b(money.format(s.monthlyContribution) + "/mo")}, you won't reach CoastFIRE before ${b(s.retirementAge)}.`;
   const full = s.fireAge === null
     ? ` You wouldn't reach your full FIRE number of ${b(money.format(s.fire))} by ${DEFAULT_MAX_AGE}.`
     : s.fireAge === s.age
       ? ` You can already fully retire.`
-      : ` Keep contributing and you can fully retire at ${b(ageText(s.fireAge))}.`;
+      : ` Keep contributing and you can fully retire at ${b(formatAge(s.fireAge))}.`;
   return coast + full;
 }
 

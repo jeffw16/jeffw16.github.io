@@ -41,6 +41,12 @@ export function fireNumber(annualSpending, withdrawalRate) {
   return annualSpending / withdrawalRate;
 }
 
+/** Annual spending a FIRE number supports at a withdrawal rate (inverse of fireNumber). */
+export function spendingFromFire(fire, withdrawalRate) {
+  if (!(withdrawalRate > 0)) return NaN;
+  return fire * withdrawalRate;
+}
+
 /**
  * Balance needed at `age` so that, with no further contributions, it grows to
  * `fire` by `retirementAge`. At or after retirement age it is simply `fire`.
