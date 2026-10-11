@@ -1,11 +1,15 @@
 import { test, expect, URL_PATH } from "./fixtures.js";
 import {
-  coastTarget, findCoastAge, findFireAge, requiredMonthlyContribution, fireNumber,
+  coastTarget, findCoastAge, findFireAge, requiredMonthlyContribution,
 } from "../coastfire-calculator/calc.js";
+import { requiredBalance, requiredBalanceFn } from "../coastfire-calculator/retirement.js";
 import { formatAge } from "../coastfire-calculator/format.js";
 
 const base = { age: 30, balance: 50_000, annualReturn: 0.07, retirementAge: 65 };
-const fire = fireNumber(40_000, 0.04);
+// Default assumptions: $40k spending, 4% withdrawal, 10% tax, no benefit.
+const need = { spending: 40_000, taxRate: 0.1, swr: 0.04, benefit: 0, benefitAge: 67, annualReturn: 0.07 };
+const fire = Math.round(requiredBalance({ ...need, retireAge: 65 })); // 1,111,111
+const requiredAt = requiredBalanceFn(need, 65, fire);
 const money = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
 
 test.beforeEach(async ({ page }) => {
@@ -22,17 +26,17 @@ const card = (page, id) => page.locator(`#${id} .card-value`);
 
 test("default load shows the model's results", async ({ page }) => {
   const coastAge = findCoastAge({ ...base, monthlyContribution: 500, fire });
-  const fireAge = findFireAge({ ...base, monthlyContribution: 500, fire });
+  const fireAge = findFireAge({ ...base, monthlyContribution: 500, fire, requiredAt });
   await expect(page.locator("#cardPrimary .card-label")).toHaveText("Full retirement age");
   await expect(page.locator("#cardPrimary")).toContainText(ageText(fireAge));
   await expect(page.locator("#cardSecondary")).toContainText(ageText(coastAge));
   await expect(card(page, "cardFire")).toHaveText(money(fire));
   await expect(card(page, "cardCoast")).toHaveText(money(coastTarget({ fire, annualReturn: 0.07, age: 30, retirementAge: 65 })));
-  // The documented spot check.
-  await expect(card(page, "cardFire")).toHaveText("$1,000,000");
-  await expect(card(page, "cardCoast")).toHaveText("$93,663");
-  await expect(page.locator("#cardPrimary")).toContainText(/60\s*years, 6 months/);
-  await expect(page.locator("#cardSecondary")).toContainText(/40\s*years, 1 month/);
+  // Pinned values for the default inputs.
+  await expect(card(page, "cardFire")).toHaveText("$1,111,111");
+  await expect(card(page, "cardCoast")).toHaveText("$104,070");
+  await expect(page.locator("#cardPrimary")).toContainText(/61\s*years, 11 months/);
+  await expect(page.locator("#cardSecondary")).toContainText(/44\s*years/);
 });
 
 test("target mode shows the contribution needed to retire at 55", async ({ page }) => {
@@ -40,7 +44,7 @@ test("target mode shows the contribution needed to retire at 55", async ({ page 
   const needed = requiredMonthlyContribution({ ...base, fire, retirementAge: 55 });
   await expect(page.locator("#cardPrimary .card-label")).toHaveText("Monthly contribution needed");
   await expect(card(page, "cardPrimary")).toContainText(money(needed));
-  await expect(card(page, "cardPrimary")).toContainText("$931");
+  await expect(card(page, "cardPrimary")).toContainText("$1,072");
   await expect(page.locator("#targetAge")).toBeVisible();
   await expect(page.locator("#contribution")).toBeHidden();
 });
@@ -94,10 +98,45 @@ test.describe("comma-formatted dollar inputs", () => {
 
 test("spending and FIRE number stay in sync", async ({ page }) => {
   await page.locator("#spending").fill("60,000");
-  await expect(page.locator("#fire")).toHaveValue("1,500,000");
+  await expect(page.locator("#fire")).toHaveValue("1,666,667");
   await page.locator("#fire").fill("2,000,000");
-  await expect(page.locator("#spending")).toHaveValue("80,000");
+  await expect(page.locator("#spending")).toHaveValue("72,000");
   await expect(card(page, "cardFire")).toHaveText("$2,000,000");
+});
+
+test("a benefit that covers spending locks the FIRE number at $0", async ({ page }) => {
+  await page.locator("#benefit").fill("45,000");
+  await page.locator("#benefitAge").fill("62");
+  await expect(page.locator("#fire")).toHaveValue("0");
+  await expect(page.locator("#fire")).toHaveJSProperty("readOnly", true);
+  await expect(page.locator("#fireHint")).toContainText("Your benefit covers your spending");
+  // Needed at 65 is $0, so CoastFIRE is reached; the FIRE card shows the larger
+  // amount needed to retire earlier, before the benefit starts.
+  await expect(card(page, "cardCoast")).toHaveText("$0");
+  await expect(page.locator("#cardSecondary")).toContainText("Reached");
+  await expect(page.locator("#cardFire .card-label")).toContainText("FIRE number (retire at");
+  await page.locator("#benefit").fill("10,000");
+  await expect(page.locator("#fire")).toHaveJSProperty("readOnly", false);
+  await expect(page.locator("#fire")).not.toHaveValue("0");
+});
+
+test("a later benefit raises the FIRE number when retiring before it starts", async ({ page }) => {
+  await page.locator("#benefit").fill("20,000");
+  await page.locator("#benefitAge").fill("67");
+  const expected = Math.round(requiredBalance({ ...need, benefit: 20_000, retireAge: 65 }));
+  await expect(page.locator("#fire")).toHaveValue(expected.toLocaleString("en-US"));
+  await expect(page.locator("#cardFire .card-label")).toContainText("FIRE number (retire at");
+});
+
+test("early-access notes follow the retirement age", async ({ page }) => {
+  const note = page.locator("#earlyNote");
+  await page.locator('input[name="mode"][value="target"]').check();
+  await page.locator("#targetAge").fill("57");
+  await expect(note).toContainText("Rule of 55");
+  await page.locator("#targetAge").fill("50");
+  await expect(note).toContainText("72(t)");
+  await page.locator("#targetAge").fill("60");
+  await expect(note).toBeHidden();
 });
 
 test("custom portfolio reveals the custom return field", async ({ page }) => {
@@ -142,7 +181,7 @@ for (const scheme of ["light", "dark"]) {
     await page.route("https://cdn.jsdelivr.net/npm/chart.js@4.4.1/**", async (route) =>
       route.fulfill({ path: new URL("../node_modules/chart.js/dist/chart.umd.js", import.meta.url).pathname, contentType: "text/javascript" }));
     await page.goto(URL_PATH);
-    await expect(page.locator("#cardFire .card-value")).toHaveText("$1,000,000");
+    await expect(page.locator("#cardFire .card-value")).toHaveText("$1,111,111");
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);
@@ -157,6 +196,6 @@ test("results and table still work when Chart.js fails to load", async ({ browse
   await page.goto(URL_PATH);
   await expect(page.locator("#chartError")).toBeVisible();
   await expect(page.locator(".chart-wrap")).toBeHidden();
-  await expect(card(page, "cardFire")).toHaveText("$1,000,000");
+  await expect(card(page, "cardFire")).toHaveText("$1,111,111");
   await context.close();
 });

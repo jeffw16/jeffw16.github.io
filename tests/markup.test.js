@@ -19,7 +19,7 @@ describe("index.html inputs (regression)", () => {
 
   it("makes every dollar input a comma-friendly decimal text box", () => {
     const amounts = inputs.filter((t) => /\bdata-amount\b/.test(t));
-    assert.deepEqual(amounts.map((t) => attr(t, "id")).sort(), ["balance", "contribution", "fire", "spending"]);
+    assert.deepEqual(amounts.map((t) => attr(t, "id")).sort(), ["balance", "benefit", "contribution", "fire", "spending"]);
     for (const tag of amounts) {
       assert.equal(attr(tag, "type"), "text", tag);
       assert.equal(attr(tag, "inputmode"), "decimal", tag);

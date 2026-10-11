@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState } from "../coastfire-calculator/persist.js";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys } from "../coastfire-calculator/persist.js";
 
 const defaults = Object.freeze({ mode: "contribution", age: "30", balance: "50,000", portfolio: "sp500" });
 const allowed = Object.freeze({ mode: ["contribution", "target"], portfolio: ["sp500", "custom"] });
@@ -74,5 +74,17 @@ describe("isDefaultState", () => {
   it("is false when a default key is missing", () => {
     const { age, ...rest } = defaults;
     assert.equal(isDefaultState(rest, defaults), false);
+  });
+});
+
+describe("savedKeys", () => {
+  it("lists the saved field names", () => {
+    assert.deepEqual(savedKeys(serializeState({ age: "30", mode: "target" })), ["age", "mode"]);
+  });
+  it("is empty for missing, corrupt or wrong-version data", () => {
+    assert.deepEqual(savedKeys(null), []);
+    assert.deepEqual(savedKeys("{nope"), []);
+    assert.deepEqual(savedKeys(JSON.stringify({ version: 9, values: { age: "1" } })), []);
+    assert.deepEqual(savedKeys(JSON.stringify({ version: 1, values: null })), []);
   });
 });

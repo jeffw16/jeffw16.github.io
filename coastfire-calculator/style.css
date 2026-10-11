@@ -225,6 +225,18 @@ input[aria-invalid="true"] { border-color: var(--error); }
 
 .advanced[open] summary { margin-bottom: 12px; }
 .advanced .field + .field { margin-top: 16px; }
+.advanced + .advanced { margin-top: 16px; }
+
+.note {
+  margin: 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--series-contrib);
+  border-radius: 0 8px 8px 0;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
 
 [hidden] { display: none !important; }
 
@@ -396,3 +408,5 @@ thead th {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+input[readonly] { background: var(--surface-2); color: var(--text-2); cursor: default; }

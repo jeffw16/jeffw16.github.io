@@ -14,9 +14,16 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=cd07937391";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "./format.js?v=cd07937391";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState } from "./persist.js?v=cd07937391";
+} from "./calc.js?v=53d25079a1";
+import {
+    requiredBalance,
+  spendingFromRequired,
+  benefitCoversSpending,
+  requiredBalanceFn,
+  earlyAccessGuidance,
+} from "./retirement.js?v=53d25079a1";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "./format.js?v=53d25079a1";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys } from "./persist.js?v=53d25079a1";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -56,13 +63,19 @@ for (const el of form.querySelectorAll("[data-amount]")) {
   el.addEventListener("blur", () => { el.value = groupDigits(el.value).replace(/\.$/, ""); });
 }
 
-// Keep spending, withdrawal rate and FIRE number in sync. The FIRE number is
-// what the calculation uses; editing it directly back-fills spending.
+// Keep spending and the FIRE number in sync. The FIRE number is what the
+// calculation uses; editing it directly back-fills spending. Everything that
+// changes the amount needed at the traditional retirement age re-derives it.
 const setAmount = (id, value) => { if (Number.isFinite(value)) $(id).value = groupDigits(String(Math.round(value))); };
-for (const id of ["spending", "swr"]) {
-  $(id).addEventListener("input", () => setAmount("fire", fireNumber(num("spending"), num("swr") / 100)));
+const FIRE_DRIVERS = ["spending", "swr", "taxRate", "benefit", "benefitAge", "retirementAge", "portfolio", "customReturn"];
+for (const id of FIRE_DRIVERS) {
+  $(id).addEventListener("input", syncFire);
+  $(id).addEventListener("change", syncFire);
 }
-$("fire").addEventListener("input", () => setAmount("spending", spendingFromFire(num("fire"), num("swr") / 100)));
+$("fire").addEventListener("input", () => {
+  const spending = spendingFromRequired({ ...needAt(num("retirementAge")), required: num("fire") });
+  if (Number.isFinite(spending)) setAmount("spending", spending);
+});
 
 $("reset").addEventListener("click", () => {
   applyFormValues(DEFAULTS);
@@ -78,7 +91,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 // ---------- Saved values ----------
 
 // Form fields remembered in localStorage, by name.
-const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "spending", "swr", "fire", "portfolio", "customReturn"];
+const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "customReturn"];
 const ALLOWED = { mode: ["contribution", "target"], portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
 
 function defaultValueOf(name) {
@@ -117,6 +130,39 @@ function num(id) {
   return el.value.trim() === "" ? NaN : Number(el.value);
 }
 
+const numOr0 = (id) => { const v = num(id); return Number.isFinite(v) ? v : 0; };
+
+// Inputs that determine the balance needed to retire at a given age.
+function needAt(retireAge) {
+  return {
+    spending: num("spending"),
+    taxRate: num("taxRate") / 100,
+    swr: num("swr") / 100,
+    benefit: numOr0("benefit"),
+    benefitAge: num("benefitAge"),
+    retireAge,
+    annualReturn: resolveReturn($("portfolio").value, num("customReturn") / 100),
+  };
+}
+
+/** Lock the FIRE number when a benefit that has started covers all spending. */
+function setFireLock(covered, benefitAge) {
+  $("fire").readOnly = covered;
+  $("fireHint").textContent = covered
+    ? `Your benefit covers your spending from age ${benefitAge}, so no 401(k) balance is needed.`
+    : FIRE_HINT;
+}
+
+/** Recompute the FIRE number from spending and the other retirement inputs. */
+function syncFire() {
+  const need = needAt(num("retirementAge"));
+  const covered = benefitCoversSpending(need);
+  setFireLock(covered, need.benefitAge);
+  const required = covered ? 0 : requiredBalance(need);
+  if (Number.isFinite(required)) setAmount("fire", required);
+}
+const FIRE_HINT = $("fireHint").textContent;
+
 function readInputs() {
   const portfolio = $("portfolio").value;
   return {
@@ -128,6 +174,9 @@ function readInputs() {
     targetAge: num("targetAge"),
     spending: num("spending"),
     swr: num("swr") / 100,
+    taxRate: num("taxRate") / 100,
+    benefit: numOr0("benefit"),
+    benefitAge: num("benefitAge"),
     fire: num("fire"),
     portfolio,
     annualReturn: resolveReturn(portfolio, num("customReturn") / 100),
@@ -154,7 +203,12 @@ function validate(i) {
   }
   check("spending", Number.isFinite(i.spending) && i.spending > 0, "Enter your expected annual spending in retirement.");
   check("swr", Number.isFinite(i.swr) && i.swr > 0, "Enter a withdrawal rate above 0%.");
-  check("fire", Number.isFinite(i.fire) && i.fire > 0, "Enter a FIRE number above $0.");
+  check("taxRate", Number.isFinite(i.taxRate) && i.taxRate >= 0 && i.taxRate < 1, "Enter a tax rate from 0% to 60%.");
+  check("benefit", Number.isFinite(i.benefit) && i.benefit >= 0, "Enter a benefit of $0 or more per year.");
+  check("benefitAge", Number.isFinite(i.benefitAge) && i.benefitAge >= 50 && i.benefitAge <= DEFAULT_MAX_AGE, "Benefit start age must be between 50 and 100.");
+  const covered = benefitCoversSpending({ spending: i.spending, benefit: i.benefit, benefitAge: i.benefitAge, retireAge: i.retirementAge });
+  setFireLock(covered, i.benefitAge);
+  check("fire", Number.isFinite(i.fire) && (covered ? i.fire >= 0 : i.fire > 0), "Enter a FIRE number above $0.");
   check("customReturn", i.portfolio !== "custom" || (Number.isFinite(num("customReturn")) && num("customReturn") > -100),
     "Enter a custom annual return.");
   return problems;
@@ -201,13 +255,16 @@ function update() {
   $("error").textContent = problems[0] ?? "";
   if (problems.length) return;
 
+  // Balance needed at a retirement age: the FIRE-number field at the traditional
+  // retirement age, shaped by the Social Security bridge at other ages.
   const fire = i.fire;
+  const requiredAt = requiredBalanceFn(i, i.retirementAge, fire);
   const coastNow = coastTarget({ fire, annualReturn: i.annualReturn, age: i.age, retirementAge: i.retirementAge });
   const alreadyCoast = isCoastReached(i.balance, coastNow);
   const monthlyContribution = isTarget
-    ? requiredMonthlyContribution({ ...i, fire, retirementAge: i.targetAge })
+    ? requiredMonthlyContribution({ ...i, fire: requiredAt(i.targetAge), retirementAge: i.targetAge })
     : i.monthlyContribution;
-  const params = { ...i, monthlyContribution, fire };
+  const params = { ...i, monthlyContribution, fire, requiredAt };
   const coastAge = alreadyCoast ? i.age : findCoastAge(params);
   const fireAge = isTarget ? findFireAge(params) ?? i.targetAge : findFireAge(params);
 
@@ -235,11 +292,21 @@ function update() {
   }
   setCard("cardSecondary", coastCard);
 
+  // The FIRE number depends on the retirement age only when a benefit starts later.
+  const fireCardAge = isTarget ? i.targetAge : fireAge ?? i.retirementAge;
+  const fireNeeded = requiredAt(fireCardAge);
   setCard("cardFire", {
-    value: money.format(fire),
-    sub: `${money.format(i.spending)}/yr at a ${pct.format(i.swr)} withdrawal rate`
+    label: i.benefit > 0 ? `FIRE number (retire at ${splitAge(fireCardAge).years})` : "FIRE number",
+    value: money.format(fireNeeded),
+    sub: `${money.format(i.spending)}/yr spending at a ${pct.format(i.swr)} withdrawal rate`
+      + (i.taxRate > 0 ? `, ${pct.format(i.taxRate)} tax` : "")
+      + (i.benefit > 0 ? ` · ${money.format(i.benefit)}/yr benefit from ${i.benefitAge}` : "")
       + (isTarget && fireAge !== null ? ` · reached at ${formatAge(fireAge)}` : ""),
   });
+
+  const guidance = earlyAccessGuidance(isTarget ? i.targetAge : fireAge ?? Infinity);
+  $("earlyNote").hidden = guidance === "none";
+  $("earlyNote").textContent = EARLY_NOTES[guidance] ?? "";
   setCard("cardCoast", {
     value: money.format(coastNow),
     good: alreadyCoast,
@@ -258,6 +325,11 @@ function update() {
   drawChart(series, milestones);
   fillTable(series);
 }
+
+const EARLY_NOTES = {
+  "rule-of-55": "Retiring at 55–59½? The Rule of 55 lets you withdraw from the 401(k) of the employer you leave in or after the year you turn 55 without the 10% early-withdrawal penalty.",
+  "before-55": "Retiring before 55 means bridging to 59½ — for example with 72(t) substantially equal payments, a Roth conversion ladder, or taxable savings. This calculator doesn't model early-withdrawal penalties.",
+};
 
 function summaryHtml(s) {
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -390,6 +462,9 @@ function fillTable(series) {
 
 // ---------- Start ----------
 
-applyFormValues(parseSavedState(loadSaved(), DEFAULTS, ALLOWED));
+const saved = loadSaved();
+applyFormValues(parseSavedState(saved, DEFAULTS, ALLOWED));
+// Data saved before taxes/benefits existed holds a FIRE number that ignores them; re-derive it.
+if (saved !== null && !savedKeys(saved).includes("taxRate")) syncFire();
 if (window.Chart) update();
 else window.addEventListener("load", update, { once: true });

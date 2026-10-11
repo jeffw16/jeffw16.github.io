@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=cd07937391">
+  <link rel="stylesheet" href="style.css?v=53d25079a1">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=cd07937391"></script>
+  <script type="module" src="app.js?v=53d25079a1"></script>
 </head>
 <body>
   <main class="page">
@@ -65,15 +65,15 @@
           <p class="hint">The age you'd coast to if you stop contributing (CoastFIRE horizon).</p>
         </div>
 
-        <details class="advanced" open>
-          <summary>Assumptions</summary>
+        <details class="advanced" id="retirementSection" open>
+          <summary>Retirement</summary>
 
           <div class="field">
             <label for="spending">Annual spending in retirement</label>
             <div class="affix" data-prefix="$">
               <input id="spending" name="spending" type="text" inputmode="decimal" autocomplete="off" data-amount value="40,000">
             </div>
-            <p class="hint">In today's dollars.</p>
+            <p class="hint">In today's dollars, after tax.</p>
           </div>
 
           <div class="field">
@@ -85,12 +85,37 @@
           </div>
 
           <div class="field">
+            <label for="taxRate">Effective tax rate on withdrawals</label>
+            <div class="affix" data-suffix="%">
+              <input id="taxRate" name="taxRate" type="number" inputmode="decimal" min="0" max="60" step="1" value="10">
+            </div>
+            <p class="hint">401(k) withdrawals are taxed as income. Use 0% if it's all Roth.</p>
+          </div>
+
+          <div class="field">
+            <label for="benefit">Social Security / pension (per year)</label>
+            <div class="affix" data-prefix="$">
+              <input id="benefit" name="benefit" type="text" inputmode="decimal" autocomplete="off" data-amount value="0">
+            </div>
+            <p class="hint">In today's dollars. Reduces what the 401(k) must cover once it starts.</p>
+          </div>
+
+          <div class="field">
+            <label for="benefitAge">Benefit starts at age</label>
+            <input id="benefitAge" name="benefitAge" type="number" inputmode="numeric" min="50" max="100" step="1" value="67">
+          </div>
+
+          <div class="field">
             <label for="fire">FIRE number</label>
             <div class="affix" data-prefix="$">
-              <input id="fire" name="fire" type="text" inputmode="decimal" autocomplete="off" data-amount value="1,000,000">
+              <input id="fire" name="fire" type="text" inputmode="decimal" autocomplete="off" data-amount value="1,111,111">
             </div>
-            <p class="hint">Spending ÷ withdrawal rate. Type your own target to override it; spending updates to match.</p>
+            <p class="hint" id="fireHint">Balance needed at your traditional retirement age, after tax and any benefit. Type your own target to override it; spending updates to match.</p>
           </div>
+        </details>
+
+        <details class="advanced" id="investmentsSection" open>
+          <summary>Investments</summary>
 
           <div class="field">
             <label for="portfolio">Portfolio / strategy</label>
@@ -139,6 +164,7 @@
         </div>
 
         <p id="summary" class="summary"></p>
+        <p id="earlyNote" class="note" role="note" hidden></p>
 
         <figure class="panel chart-panel">
           <figcaption class="chart-title">401(k) balance by age</figcaption>
@@ -165,7 +191,7 @@
       <p>
         All figures are in today's dollars using <em>real</em> (inflation-adjusted) returns, compounded monthly,
         with contributions at the end of each month. Portfolio returns are rough long-run historical averages, not
-        guarantees. Taxes, fees, and Social Security are not modeled. This is an educational tool, not financial advice.
+        guarantees. Taxes are modeled as a single effective rate on withdrawals; fees and early-withdrawal penalties are not modeled. This is an educational tool, not financial advice.
       </p>
     </footer>
   </main>

@@ -37,3 +37,14 @@ export function parseSavedState(text, defaults, allowed = {}) {
 export function isDefaultState(values, defaults) {
   return Object.keys(defaults).every((key) => values[key] === defaults[key]);
 }
+
+/** Field names present in saved JSON text (empty for missing, corrupt or wrong-version data). */
+export function savedKeys(text) {
+  try {
+    const saved = JSON.parse(text);
+    if (!saved || saved.version !== VERSION || typeof saved.values !== "object" || saved.values === null) return [];
+    return Object.keys(saved.values);
+  } catch {
+    return [];
+  }
+}
