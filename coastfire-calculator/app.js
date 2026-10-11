@@ -4,30 +4,22 @@ import {
   DEFAULT_PORTFOLIO_ID,
   DEFAULT_MAX_AGE,
   resolveReturn,
-  fireNumber,
-  spendingFromFire,
-  coastTarget,
-  isCoastReached,
-  findCoastAge,
-  findFireAge,
-  contributionSchedule,
   convertContribution,
-  solveEmployeeAmount,
   DEFAULT_CONTRIBUTION,
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=30a8c74f3f";
+} from "./calc.js?v=31c6da205c";
 import {
-    requiredBalance,
+  requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
-  requiredBalanceFn,
   earlyAccessGuidance,
-} from "./retirement.js?v=30a8c74f3f";
-import { IRS_LIMITS, firstAgeOverLimit } from "./limits.js?v=30a8c74f3f";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "./format.js?v=30a8c74f3f";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys } from "./persist.js?v=30a8c74f3f";
+} from "./retirement.js?v=31c6da205c";
+import { IRS_LIMITS } from "./limits.js?v=31c6da205c";
+import { computeScenario, sensitivity } from "./scenario.js?v=31c6da205c";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "./format.js?v=31c6da205c";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys } from "./persist.js?v=31c6da205c";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -35,6 +27,7 @@ const form = $("inputs");
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 const moneyCompact = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
 const pct = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1 });
+const moneyCompact2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 2 });
 const amountFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 
 let chart = null;
@@ -289,43 +282,17 @@ function update() {
   $("error").textContent = problems[0] ?? "";
   if (problems.length) return;
 
-  // Balance needed at a retirement age: the FIRE-number field at the traditional
-  // retirement age, shaped by the Social Security bridge at other ages.
-  const fire = i.fire;
-  const requiredAt = requiredBalanceFn(i, i.retirementAge, fire);
-  const coastNow = coastTarget({ fire, annualReturn: i.annualReturn, age: i.age, retirementAge: i.retirementAge });
-  const alreadyCoast = isCoastReached(i.balance, coastNow);
-  const scheduleOf = (amount) => contributionSchedule({
-    months: Math.round((DEFAULT_MAX_AGE - i.age) * 12),
-    unit: i.contributionUnit, amount, salary: i.salary, raise: i.raise, matchRate: i.matchRate, matchCap: i.matchCap,
-  });
-  const amount = isTarget
-    ? solveEmployeeAmount({
-        balance: i.balance, annualReturn: i.annualReturn, months: Math.round((i.targetAge - i.age) * 12),
-        target: requiredAt(i.targetAge), unit: i.contributionUnit, salary: i.salary, raise: i.raise, matchRate: i.matchRate, matchCap: i.matchCap,
-      })
-    : i.contribution;
-  if (amount === null) {
+  const scenario = computeScenario(i);
+  if (scenario.unreachable) {
     $("error").hidden = false;
     $("error").textContent = "That target can't be reached with these assumptions.";
     return;
   }
-  const schedule = scheduleOf(amount);
-  const monthlyContribution = schedule.employee[0];
-  const matchMonthly = schedule.total[0] - schedule.employee[0];
-  const params = { ...i, monthlyContribution, contributions: schedule.total, fire, requiredAt };
-  const coastAge = alreadyCoast ? i.age : findCoastAge(params);
-  const fireAge = isTarget ? findFireAge(params) ?? i.targetAge : findFireAge(params);
+  const { fire, requiredAt, coastNow, alreadyCoast, amount, schedule, monthlyContribution, matchMonthly, params, coastAge, fireAge, coastMonth, over } = scenario;
   const contributionText = pctUnit
     ? `${amountFormat.format(amount)}% of salary (${money.format(monthlyContribution)}/mo)`
     : `${money.format(monthlyContribution)}/mo`;
 
-  // The employer match doesn't count toward the IRS limit; flag your own contributions.
-  const contributingUntil = isTarget ? i.targetAge : fireAge ?? i.retirementAge;
-  const over = firstAgeOverLimit({
-    age: i.age,
-    employeeSchedule: schedule.employee.subarray(0, Math.max(0, Math.round((contributingUntil - i.age) * 12))),
-  });
   $("limitWarning").hidden = !over;
   if (over) {
     $("limitWarning").textContent = `Your contributions reach ${money.format(over.annual)}/yr at age ${over.age}, above the ${IRS_LIMITS.year} 401(k) limit of ${money.format(over.limit)}/yr for that age. Consider an IRA or taxable account for the rest.`;
@@ -384,12 +351,13 @@ function update() {
   $("summary").innerHTML = summaryHtml({ ...i, contributionText, fire, coastAge, fireAge, alreadyCoast });
 
   const endAge = chartEndAge({ age: i.age, retirementAge: i.retirementAge, fireAge });
-  const series = buildSeries({ ...params, endAge });
+  const series = buildSeries({ ...params, endAge, coastMonth });
   const milestones = [];
   if (!alreadyCoast && coastAge !== null) milestones.push({ x: coastAge, label: "Coast" });
   if (fireAge !== null) milestones.push({ x: fireAge, label: "FIRE" });
   drawChart(series, milestones);
   fillTable(series);
+  fillSensitivity(i, sensitivity(i));
 }
 
 const EARLY_NOTES = {
@@ -403,7 +371,7 @@ function summaryHtml(s) {
   const coast = s.alreadyCoast
     ? `You've already reached ${b("CoastFIRE")}: even with no more contributions, your balance should grow to ${b(money.format(s.fire))} by ${b(s.retirementAge)}.`
     : s.coastAge !== null
-      ? `Contributing ${b(s.contributionText)}, you hit CoastFIRE at ${b(formatAge(s.coastAge))} and could stop contributing and still retire at ${b(s.retirementAge)}.`
+      ? `Contributing ${b(s.contributionText)}, you hit CoastFIRE at ${b(formatAge(s.coastAge))} and could stop contributing and still reach ${b(moneyCompact2.format(s.fire))} by ${b(s.retirementAge)}.`
       : `At ${b(s.contributionText)}, you won't reach CoastFIRE before ${b(s.retirementAge)}.`;
   const full = s.fireAge === null
     ? ` You wouldn't reach your full FIRE number of ${b(money.format(s.fire))} by ${DEFAULT_MAX_AGE}.`
@@ -445,16 +413,23 @@ const milestonePlugin = {
   },
 };
 
+const LEGEND_RANK = [0, 2, 1, 3];
+
 function drawChart(series, milestones) {
   $("chartError").hidden = !!window.Chart;
   document.querySelector(".chart-wrap").hidden = !window.Chart;
   if (!window.Chart) return;
   const toPoints = (ys) => series.ages.map((x, k) => ({ x, y: ys[k] }));
+  const hasPath = Boolean(series.coastPath);
+  // Chart.js draws the first dataset on top, so the coast path comes before the
+  // current-balance line (they coincide once you've already coasted); the
+  // legend sort below puts it after.
   const datasets = [
     { label: "With monthly contributions", data: toPoints(series.withContrib), borderColor: cssVar("--series-contrib") },
+    { label: "Contribute until coast, then stop", data: hasPath ? toPoints(series.coastPath) : [], borderColor: cssVar("--series-coastpath"), borderDash: [2, 4], borderWidth: 3, borderCapStyle: "round" },
     { label: "Current balance only", data: toPoints(series.noContrib), borderColor: cssVar("--series-current") },
     { label: "CoastFIRE target", data: toPoints(series.coastTarget), borderColor: cssVar("--series-coast"), borderDash: [6, 4] },
-  ].map((d) => ({ ...d, backgroundColor: d.borderColor, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderWidth: 2, pointHoverBorderColor: cssVar("--surface"), tension: 0 }));
+  ].map((d) => ({ borderWidth: 2, ...d, backgroundColor: d.borderColor, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderWidth: 2, pointHoverBorderColor: cssVar("--surface"), tension: 0 }));
 
   if (chart) {
     chart.data.datasets.forEach((d, k) => { d.data = datasets[k].data; });
@@ -499,7 +474,12 @@ function drawChart(series, milestones) {
         legend: {
           position: "top",
           align: "start",
-          labels: { color: cssVar("--text"), usePointStyle: true, pointStyle: "line", boxWidth: 24, padding: 16 },
+          labels: {
+            color: cssVar("--text"), usePointStyle: true, pointStyle: "line", boxWidth: 24, padding: 16,
+            // Hide the coast-path entry when there is no path; list it after "Current balance only".
+            filter: (item, data) => data.datasets[item.datasetIndex].data.length > 0,
+            sort: (a, b) => LEGEND_RANK[a.datasetIndex] - LEGEND_RANK[b.datasetIndex],
+          },
         },
         tooltip: {
           backgroundColor: cssVar("--surface"),
@@ -521,9 +501,26 @@ function drawChart(series, milestones) {
 }
 
 function fillTable(series) {
+  const cell = (v) => (v === undefined ? "—" : money.format(v));
   const rows = series.ages.map((a, k) =>
-    `<tr><td>${a}</td><td>${money.format(series.noContrib[k])}</td><td>${money.format(series.withContrib[k])}</td><td>${money.format(series.coastTarget[k])}</td></tr>`);
+    `<tr><td>${a}</td><td>${cell(series.noContrib[k])}</td><td>${cell(series.withContrib[k])}</td><td>${cell(series.coastPath?.[k])}</td><td>${cell(series.coastTarget[k])}</td></tr>`);
   $("dataTable").tBodies[0].innerHTML = rows.join("");
+}
+
+// "If returns are different": the key results at the chosen return ±1%.
+function fillSensitivity(i, rows) {
+  const isTarget = i.mode === "target";
+  const header = rows.map((r, k) => `<th scope="col">${k === 1 ? "As chosen" : `${pct.format(Math.abs(r.delta))} ${r.delta < 0 ? "lower" : "higher"}`} (${pct.format(r.rate)})</th>`).join("");
+  $("sensitivity").tHead.innerHTML = `<tr><td></td>${header}</tr>`;
+  const row = (label, cellOf) => `<tr><th scope="row">${label}</th>${rows.map((r) => `<td>${r.unreachable ? "—" : cellOf(r)}</td>`).join("")}</tr>`;
+  const body = isTarget
+    ? [row(i.contributionUnit === "pct" ? "Contribution needed" : "Monthly contribution needed",
+        (r) => (i.contributionUnit === "pct" ? `${amountFormat.format(r.amount)}% of salary` : `${money.format(r.amount)}/mo`))]
+    : [
+        row("CoastFIRE age", (r) => (r.alreadyCoast ? "Reached ✓" : formatAgeOrNote(r.coastAge, `Not by ${i.retirementAge}`))),
+        row("Full retirement age", (r) => formatAgeOrNote(r.fireAge, `Not by ${DEFAULT_MAX_AGE}`)),
+      ];
+  $("sensitivity").tBodies[0].innerHTML = body.join("");
 }
 
 // ---------- Start ----------

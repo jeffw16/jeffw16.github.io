@@ -15,6 +15,7 @@ import {
   constantSchedule,
   DEFAULT_CONTRIBUTION,
   contributionSchedule,
+  coastPathSchedule,
   convertContribution,
   solveEmployeeAmount,
   firstMonthAtOrAbove,
@@ -481,5 +482,44 @@ describe("solveEmployeeAmount", () => {
   });
   it("works at a zero return", () => {
     close(solveEmployeeAmount({ ...p, annualReturn: 0, balance: 0, months: 100, target: 100_000 }), 1_000, 1e-4);
+  });
+});
+
+describe("coastPathSchedule", () => {
+  it("keeps contributions before the coast month and zeroes the rest", () => {
+    assert.deepEqual([...coastPathSchedule(constantSchedule(100, 6), 2)], [100, 100, 0, 0, 0, 0]);
+  });
+  it("zeroes everything for month 0 and keeps everything past the end", () => {
+    assert.deepEqual([...coastPathSchedule(constantSchedule(100, 3), 0)], [0, 0, 0]);
+    assert.deepEqual([...coastPathSchedule(constantSchedule(100, 3), 99)], [100, 100, 100]);
+  });
+  it("does not mutate its input", () => {
+    const schedule = constantSchedule(100, 4);
+    coastPathSchedule(schedule, 1);
+    assert.deepEqual([...schedule], [100, 100, 100, 100]);
+  });
+});
+
+describe("buildSeries coastPath", () => {
+  const params = { ...base, endAge: 70 };
+  it("is null without a coast month", () => {
+    assert.equal(buildSeries(params).coastPath, null);
+  });
+  it("matches the contribution line until the coast month, then grows without contributions", () => {
+    const coastMonth = 120; // age 40
+    const s = buildSeries({ ...params, coastMonth });
+    assert.equal(s.coastPath.length, s.ages.length);
+    close(s.coastPath[10], s.withContrib[10]);
+    close(s.coastPath[20], s.coastPath[10] * Math.pow(1.07, 10));
+  });
+  it("reaches the FIRE number at the retirement age when coasting from the coast age", () => {
+    const coastAge = findCoastAge(base);
+    const s = buildSeries({ ...params, coastMonth: Math.round((coastAge - 30) * 12) });
+    const atRetirement = s.coastPath[s.ages.indexOf(65)];
+    assert.ok(atRetirement >= base.fire * (1 - 1e-3));
+  });
+  it("equals the no-contribution line when coasting from month 0", () => {
+    const s = buildSeries({ ...params, coastMonth: 0 });
+    s.coastPath.forEach((v, k) => close(v, s.noContrib[k]));
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "../coastfire-calculator/format.js";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "../coastfire-calculator/format.js";
 
 describe("parseAmount", () => {
   it("parses plain and comma-grouped numbers", () => {
@@ -211,5 +211,16 @@ describe("dollar input keystrokes (regression)", () => {
     for (const n of [0, 7, 999, 1000, 65_432, 1_000_000, 123_456_789]) {
       assert.equal(parseAmount(typeText(empty, String(n)).value), n);
     }
+  });
+});
+
+describe("formatAgeOrNote", () => {
+  it("formats a real age", () => {
+    assert.equal(formatAgeOrNote(40 + 1 / 12, "Not by 65"), "40 years, 1 month");
+    assert.equal(formatAgeOrNote(0, "Not by 65"), "0 years");
+  });
+  it("returns the note for null or undefined", () => {
+    assert.equal(formatAgeOrNote(null, "Not by 65"), "Not by 65");
+    assert.equal(formatAgeOrNote(undefined, "Not by 65"), "Not by 65");
   });
 });

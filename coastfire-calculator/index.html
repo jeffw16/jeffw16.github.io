@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=30a8c74f3f">
+  <link rel="stylesheet" href="style.css?v=31c6da205c">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=30a8c74f3f"></script>
+  <script type="module" src="app.js?v=31c6da205c"></script>
 </head>
 <body>
   <main class="page">
@@ -227,13 +227,23 @@
             <div class="table-scroll">
               <table id="dataTable">
                 <thead>
-                  <tr><th scope="col">Age</th><th scope="col">Current balance only</th><th scope="col">With contributions</th><th scope="col">CoastFIRE target</th></tr>
+                  <tr><th scope="col">Age</th><th scope="col">Current balance only</th><th scope="col">With contributions</th><th scope="col">Contribute until coast</th><th scope="col">CoastFIRE target</th></tr>
                 </thead>
                 <tbody></tbody>
               </table>
             </div>
           </details>
         </figure>
+
+        <section class="panel sensitivity-panel" aria-labelledby="sensitivityTitle">
+          <h2 class="chart-title" id="sensitivityTitle">If returns are different</h2>
+          <div class="table-scroll">
+            <table id="sensitivity">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
       </section>
     </div>
 
