@@ -152,6 +152,69 @@ export function requiredMonthlyContribution({ age, balance, annualReturn, fire, 
   return rm === 0 ? shortfall / months : (shortfall * rm) / (Math.pow(1 + rm, months) - 1);
 }
 
+export const DEFAULT_CONTRIBUTION = Object.freeze({ usd: 500, pct: 6 });
+
+/**
+ * Monthly contributions for `months` months, as { employee, total } Float64Arrays.
+ * `unit` is "usd" (amount = dollars per month) or "pct" (amount = percent of
+ * salary, e.g. 6 for 6%). `raise` is the yearly real raise as a fraction; it
+ * steps up each 12 months and applies to dollar contributions too. The match is
+ * `matchRate` of the employee's contribution up to `matchCap` (fraction) of
+ * salary; with no salary there is no match and a percent contribution is 0.
+ */
+export function contributionSchedule({ months, unit, amount, salary, raise = 0, matchRate = 0, matchCap = 0 }) {
+  const count = Math.max(0, Math.round(months));
+  const employee = new Float64Array(count);
+  const total = new Float64Array(count);
+  const hasSalary = salary > 0;
+  for (let n = 0; n < count; n++) {
+    const growth = Math.pow(1 + raise, Math.floor(n / 12));
+    const own = unit === "pct" ? (hasSalary ? ((amount / 100) * salary * growth) / 12 : 0) : amount * growth;
+    const match = hasSalary ? matchRate * Math.min(own, (matchCap * salary * growth) / 12) : 0;
+    employee[n] = own;
+    total[n] = own + match;
+  }
+  return { employee, total };
+}
+
+/**
+ * Convert a contribution amount between "usd" (per month) and "pct" (of
+ * salary). Returns null when a conversion is needed but salary is missing.
+ */
+export function convertContribution({ amount, from, to, salary }) {
+  if (from === to) return amount;
+  if (!(salary > 0)) return null;
+  return from === "usd" ? ((amount * 12) / salary) * 100 : ((amount / 100) * salary) / 12;
+}
+
+/**
+ * Smallest employee contribution (in the schedule's unit) that grows the
+ * balance to `target` after `months` months, found by bisection to half a
+ * cent (or half a hundredth of a percent point). 0 if the balance alone gets
+ * there; null if months <= 0, a percent is asked for without salary, or the
+ * target can't be reached.
+ */
+export function solveEmployeeAmount({ balance, annualReturn, months, target, unit, salary, raise = 0, matchRate = 0, matchCap = 0 }) {
+  if (!(months > 0)) return null;
+  if (unit === "pct" && !(salary > 0)) return null;
+  const rm = monthlyRate(annualReturn);
+  const reaches = (amount) => {
+    const { total } = contributionSchedule({ months, unit, amount, salary, raise, matchRate, matchCap });
+    return isCoastReached(simulate({ balance, contributions: total, monthlyReturns: rm })[Math.round(months)], target);
+  };
+  if (reaches(0)) return 0;
+  let hi = 1;
+  for (let k = 0; k < 60 && !reaches(hi); k++) hi *= 2;
+  if (!reaches(hi)) return null;
+  let lo = hi === 1 ? 0 : hi / 2;
+  for (let k = 0; k < 100 && hi - lo > 0.005; k++) {
+    const mid = (lo + hi) / 2;
+    if (reaches(mid)) hi = mid;
+    else lo = mid;
+  }
+  return hi;
+}
+
 /** Last age to show on the chart: a few years past the later of the milestones. */
 export function chartEndAge({ age, retirementAge, fireAge, maxAge = DEFAULT_MAX_AGE, padding = 5 }) {
   const milestone = Math.max(retirementAge, fireAge ?? 0, age + 1);

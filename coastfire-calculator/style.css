@@ -409,4 +409,6 @@ thead th {
   white-space: nowrap;
 }
 
+.note.warn { border-left-color: var(--series-current); }
+
 input[readonly] { background: var(--surface-2); color: var(--text-2); cursor: default; }

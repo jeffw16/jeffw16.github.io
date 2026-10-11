@@ -10,20 +10,24 @@ import {
   isCoastReached,
   findCoastAge,
   findFireAge,
-  requiredMonthlyContribution,
+  contributionSchedule,
+  convertContribution,
+  solveEmployeeAmount,
+  DEFAULT_CONTRIBUTION,
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=53d25079a1";
+} from "./calc.js?v=30a8c74f3f";
 import {
     requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   requiredBalanceFn,
   earlyAccessGuidance,
-} from "./retirement.js?v=53d25079a1";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "./format.js?v=53d25079a1";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys } from "./persist.js?v=53d25079a1";
+} from "./retirement.js?v=30a8c74f3f";
+import { IRS_LIMITS, firstAgeOverLimit } from "./limits.js?v=30a8c74f3f";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "./format.js?v=30a8c74f3f";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys } from "./persist.js?v=30a8c74f3f";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -31,6 +35,7 @@ const form = $("inputs");
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 const moneyCompact = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
 const pct = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1 });
+const amountFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 
 let chart = null;
 
@@ -77,6 +82,18 @@ $("fire").addEventListener("input", () => {
   if (Number.isFinite(spending)) setAmount("spending", spending);
 });
 
+// Switching $ <-> % converts the amount using salary (or falls back to a typical value).
+let lastUnit = form.elements.contributionUnit.value;
+for (const radio of form.elements.contributionUnit) {
+  radio.addEventListener("change", () => {
+    const to = form.elements.contributionUnit.value;
+    const converted = convertContribution({ amount: num("contribution"), from: lastUnit, to, salary: num("salary") });
+    const amount = Number.isFinite(converted) ? converted : DEFAULT_CONTRIBUTION[to];
+    $("contribution").value = groupDigits(String(to === "usd" ? Math.round(amount) : Math.round(amount * 100) / 100));
+    lastUnit = to;
+  });
+}
+
 $("reset").addEventListener("click", () => {
   applyFormValues(DEFAULTS);
   update();
@@ -91,11 +108,11 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 // ---------- Saved values ----------
 
 // Form fields remembered in localStorage, by name.
-const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "customReturn"];
-const ALLOWED = { mode: ["contribution", "target"], portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
+const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "customReturn"];
+const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
 
 function defaultValueOf(name) {
-  if (name === "mode") return [...form.elements.mode].find((r) => r.defaultChecked).value;
+  if (name === "mode" || name === "contributionUnit") return [...form.elements[name]].find((r) => r.defaultChecked).value;
   if (name === "portfolio") return DEFAULT_PORTFOLIO_ID;
   return form.elements[name].defaultValue;
 }
@@ -108,6 +125,7 @@ function readFormValues() {
 
 function applyFormValues(values) {
   for (const n of FIELDS) form.elements[n].value = values[n];
+  lastUnit = form.elements.contributionUnit.value;
 }
 
 // Storage can be unavailable (private mode, blocked site data); the page works without it.
@@ -169,7 +187,12 @@ function readInputs() {
     mode: form.elements.mode.value,
     age: num("age"),
     balance: num("balance"),
-    monthlyContribution: num("contribution"),
+    contribution: num("contribution"),
+    contributionUnit: form.elements.contributionUnit.value,
+    salary: num("salary"),
+    matchRate: numOr0("matchRate") / 100,
+    matchCap: numOr0("matchCap") / 100,
+    raise: numOr0("raise") / 100,
     retirementAge: num("retirementAge"),
     targetAge: num("targetAge"),
     spending: num("spending"),
@@ -194,13 +217,17 @@ function validate(i) {
   check("retirementAge", Number.isFinite(i.retirementAge) && i.retirementAge > i.age && i.retirementAge <= DEFAULT_MAX_AGE,
     "Retirement age must be after your current age and at most 100.");
   if (i.mode === "contribution") {
-    check("contribution", Number.isFinite(i.monthlyContribution) && i.monthlyContribution >= 0, "Enter a monthly contribution (0 or more).");
+    check("contribution", Number.isFinite(i.contribution) && i.contribution >= 0, "Enter a contribution (0 or more).");
     $("targetAge").setAttribute("aria-invalid", "false");
   } else {
     check("targetAge", Number.isFinite(i.targetAge) && i.targetAge > i.age && i.targetAge <= DEFAULT_MAX_AGE,
       "Target retirement age must be after your current age and at most 100.");
     $("contribution").setAttribute("aria-invalid", "false");
   }
+  check("salary", i.contributionUnit !== "pct" || i.salary > 0, "Enter your annual salary to contribute a percentage of it.");
+  check("matchRate", i.matchRate >= 0 && i.matchRate <= 1, "Enter an employer match from 0% to 100%.");
+  check("matchCap", i.matchCap >= 0 && i.matchCap <= 1, "Enter a match limit from 0% to 100% of salary.");
+  check("raise", i.raise >= -0.05 && i.raise <= 0.1, "Enter yearly raises from -5% to 10%.");
   check("spending", Number.isFinite(i.spending) && i.spending > 0, "Enter your expected annual spending in retirement.");
   check("swr", Number.isFinite(i.swr) && i.swr > 0, "Enter a withdrawal rate above 0%.");
   check("taxRate", Number.isFinite(i.taxRate) && i.taxRate >= 0 && i.taxRate < 1, "Enter a tax rate from 0% to 60%.");
@@ -250,6 +277,13 @@ function update() {
   $("customReturnField").hidden = i.portfolio !== "custom";
   $("portfolioNote").textContent = PORTFOLIOS.find((p) => p.id === i.portfolio)?.note ?? "Enter your own expected real (after-inflation) return.";
 
+  const pctUnit = i.contributionUnit === "pct";
+  $("contributionLabel").textContent = pctUnit ? "Contribution (% of salary)" : "Monthly contribution";
+  const affix = $("contributionAffix");
+  if (pctUnit) { delete affix.dataset.prefix; affix.dataset.suffix = "%"; }
+  else { delete affix.dataset.suffix; affix.dataset.prefix = "$"; }
+  $("matchHint").hidden = !((i.matchRate > 0 || i.matchCap > 0) && !(i.salary > 0));
+
   const problems = validate(i);
   $("error").hidden = problems.length === 0;
   $("error").textContent = problems[0] ?? "";
@@ -261,12 +295,41 @@ function update() {
   const requiredAt = requiredBalanceFn(i, i.retirementAge, fire);
   const coastNow = coastTarget({ fire, annualReturn: i.annualReturn, age: i.age, retirementAge: i.retirementAge });
   const alreadyCoast = isCoastReached(i.balance, coastNow);
-  const monthlyContribution = isTarget
-    ? requiredMonthlyContribution({ ...i, fire: requiredAt(i.targetAge), retirementAge: i.targetAge })
-    : i.monthlyContribution;
-  const params = { ...i, monthlyContribution, fire, requiredAt };
+  const scheduleOf = (amount) => contributionSchedule({
+    months: Math.round((DEFAULT_MAX_AGE - i.age) * 12),
+    unit: i.contributionUnit, amount, salary: i.salary, raise: i.raise, matchRate: i.matchRate, matchCap: i.matchCap,
+  });
+  const amount = isTarget
+    ? solveEmployeeAmount({
+        balance: i.balance, annualReturn: i.annualReturn, months: Math.round((i.targetAge - i.age) * 12),
+        target: requiredAt(i.targetAge), unit: i.contributionUnit, salary: i.salary, raise: i.raise, matchRate: i.matchRate, matchCap: i.matchCap,
+      })
+    : i.contribution;
+  if (amount === null) {
+    $("error").hidden = false;
+    $("error").textContent = "That target can't be reached with these assumptions.";
+    return;
+  }
+  const schedule = scheduleOf(amount);
+  const monthlyContribution = schedule.employee[0];
+  const matchMonthly = schedule.total[0] - schedule.employee[0];
+  const params = { ...i, monthlyContribution, contributions: schedule.total, fire, requiredAt };
   const coastAge = alreadyCoast ? i.age : findCoastAge(params);
   const fireAge = isTarget ? findFireAge(params) ?? i.targetAge : findFireAge(params);
+  const contributionText = pctUnit
+    ? `${amountFormat.format(amount)}% of salary (${money.format(monthlyContribution)}/mo)`
+    : `${money.format(monthlyContribution)}/mo`;
+
+  // The employer match doesn't count toward the IRS limit; flag your own contributions.
+  const contributingUntil = isTarget ? i.targetAge : fireAge ?? i.retirementAge;
+  const over = firstAgeOverLimit({
+    age: i.age,
+    employeeSchedule: schedule.employee.subarray(0, Math.max(0, Math.round((contributingUntil - i.age) * 12))),
+  });
+  $("limitWarning").hidden = !over;
+  if (over) {
+    $("limitWarning").textContent = `Your contributions reach ${money.format(over.annual)}/yr at age ${over.age}, above the ${IRS_LIMITS.year} 401(k) limit of ${money.format(over.limit)}/yr for that age. Consider an IRA or taxable account for the rest.`;
+  }
 
   const coastCard = alreadyCoast
     ? { label: "CoastFIRE", value: "Reached ✓", good: true, sub: `You could stop contributing today and still retire at ${i.retirementAge}.` }
@@ -276,18 +339,21 @@ function update() {
 
   if (isTarget) {
     setCard("cardPrimary", {
-      label: "Monthly contribution needed",
-      value: money.format(monthlyContribution),
-      unit: "/ mo",
-      good: monthlyContribution === 0,
-      sub: monthlyContribution === 0
+      label: pctUnit ? "Contribution needed" : "Monthly contribution needed",
+      value: pctUnit ? `${amountFormat.format(amount)}%` : money.format(amount),
+      unit: pctUnit ? "of salary" : "/ mo",
+      good: amount === 0,
+      sub: amount === 0
         ? `Your current balance alone reaches your FIRE number by ${i.targetAge}${fireAge < i.targetAge - 1e-9 ? ` (on track for ${formatAge(fireAge)})` : ""}.`
-        : `To fully retire at ${i.targetAge}.`,
+        : [`To fully retire at ${i.targetAge}.`,
+            pctUnit ? `That's ${money.format(monthlyContribution)}/mo to start.` : "",
+            matchMonthly > 0 ? `Plus ${money.format(matchMonthly)}/mo employer match.` : "",
+            i.raise !== 0 ? `Grows ${pct.format(i.raise)}/yr.` : ""].filter(Boolean).join(" "),
     });
   } else {
     setCard("cardPrimary", fireAge !== null
       ? { label: "Full retirement age", ...cardAge(fireAge), good: fireAge === i.age,
-          sub: fireAge === i.age ? "You've already hit your FIRE number." : `If you keep contributing ${money.format(i.monthlyContribution)}/mo.` }
+          sub: fireAge === i.age ? "You've already hit your FIRE number." : `If you keep contributing ${contributionText}${matchMonthly > 0 ? ` plus ${money.format(matchMonthly)}/mo match` : ""}.` }
       : { label: "Full retirement age", value: `Not by ${DEFAULT_MAX_AGE}`, sub: "Try a higher contribution or lower spending." });
   }
   setCard("cardSecondary", coastCard);
@@ -315,7 +381,7 @@ function update() {
       : `You're ${money.format(coastNow - i.balance)} short at ${pct.format(i.annualReturn)} real return.`,
   });
 
-  $("summary").innerHTML = summaryHtml({ ...i, monthlyContribution, fire, coastAge, fireAge, alreadyCoast });
+  $("summary").innerHTML = summaryHtml({ ...i, contributionText, fire, coastAge, fireAge, alreadyCoast });
 
   const endAge = chartEndAge({ age: i.age, retirementAge: i.retirementAge, fireAge });
   const series = buildSeries({ ...params, endAge });
@@ -337,8 +403,8 @@ function summaryHtml(s) {
   const coast = s.alreadyCoast
     ? `You've already reached ${b("CoastFIRE")}: even with no more contributions, your balance should grow to ${b(money.format(s.fire))} by ${b(s.retirementAge)}.`
     : s.coastAge !== null
-      ? `Contributing ${b(money.format(s.monthlyContribution) + "/mo")}, you hit CoastFIRE at ${b(formatAge(s.coastAge))} and could stop contributing and still retire at ${b(s.retirementAge)}.`
-      : `At ${b(money.format(s.monthlyContribution) + "/mo")}, you won't reach CoastFIRE before ${b(s.retirementAge)}.`;
+      ? `Contributing ${b(s.contributionText)}, you hit CoastFIRE at ${b(formatAge(s.coastAge))} and could stop contributing and still retire at ${b(s.retirementAge)}.`
+      : `At ${b(s.contributionText)}, you won't reach CoastFIRE before ${b(s.retirementAge)}.`;
   const full = s.fireAge === null
     ? ` You wouldn't reach your full FIRE number of ${b(money.format(s.fire))} by ${DEFAULT_MAX_AGE}.`
     : s.fireAge === s.age

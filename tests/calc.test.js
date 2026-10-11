@@ -13,6 +13,10 @@ import {
   isCoastReached,
   simulate,
   constantSchedule,
+  DEFAULT_CONTRIBUTION,
+  contributionSchedule,
+  convertContribution,
+  solveEmployeeAmount,
   firstMonthAtOrAbove,
   findCoastAge,
   findFireAge,
@@ -371,5 +375,111 @@ describe("findCoastAge / findFireAge extensions", () => {
   it("does not mutate a frozen schedule", () => {
     const contributions = Object.freeze(Array.from({ length: 840 }, () => 500));
     assert.doesNotThrow(() => findFireAge({ ...base, contributions }));
+  });
+});
+
+describe("contributionSchedule", () => {
+  const neutral = { months: 24, unit: "usd", amount: 500 };
+  it("equals a constant schedule with no raise, match or salary", () => {
+    const { employee, total } = contributionSchedule(neutral);
+    assert.deepEqual([...employee], [...constantSchedule(500, 24)]);
+    assert.deepEqual([...total], [...employee]);
+  });
+  it("steps dollar contributions up by the raise every 12 months", () => {
+    const { employee } = contributionSchedule({ ...neutral, months: 36, raise: 0.1 });
+    close(employee[0], 500);
+    close(employee[11], 500);
+    close(employee[12], 550);
+    close(employee[24], 605);
+  });
+  it("computes percent contributions from salary, growing with raises", () => {
+    const { employee } = contributionSchedule({ months: 24, unit: "pct", amount: 6, salary: 120_000, raise: 0.05 });
+    close(employee[0], 600);
+    close(employee[12], 630);
+  });
+  it("percent of salary and the equivalent dollars give the same schedule", () => {
+    const pct = contributionSchedule({ months: 36, unit: "pct", amount: 6, salary: 120_000, raise: 0.03, matchRate: 0.5, matchCap: 0.06 });
+    const usd = contributionSchedule({ months: 36, unit: "usd", amount: 600, salary: 120_000, raise: 0.03, matchRate: 0.5, matchCap: 0.06 });
+    for (let n = 0; n < 36; n++) {
+      close(pct.employee[n], usd.employee[n]);
+      close(pct.total[n], usd.total[n]);
+    }
+  });
+  it("adds a match of matchRate on the employee amount up to the cap", () => {
+    const below = contributionSchedule({ months: 1, unit: "usd", amount: 300, salary: 120_000, matchRate: 0.5, matchCap: 0.06 });
+    close(below.total[0] - below.employee[0], 150); // 50% of 300, under the 600 cap
+    const above = contributionSchedule({ months: 1, unit: "usd", amount: 1_000, salary: 120_000, matchRate: 0.5, matchCap: 0.06 });
+    close(above.total[0] - above.employee[0], 300); // 50% of the capped 600
+  });
+  it("gives no match and no percent contribution without a salary", () => {
+    const usd = contributionSchedule({ months: 2, unit: "usd", amount: 500, matchRate: 1, matchCap: 0.1 });
+    assert.deepEqual([...usd.total], [500, 500]);
+    const pct = contributionSchedule({ months: 2, unit: "pct", amount: 6 });
+    assert.deepEqual([...pct.total], [0, 0]);
+  });
+  it("is empty for zero months", () => {
+    assert.equal(contributionSchedule({ ...neutral, months: 0 }).total.length, 0);
+  });
+});
+
+describe("convertContribution", () => {
+  it("converts dollars per month to percent of salary and back", () => {
+    close(convertContribution({ amount: 600, from: "usd", to: "pct", salary: 120_000 }), 6);
+    close(convertContribution({ amount: 6, from: "pct", to: "usd", salary: 120_000 }), 600);
+  });
+  it("returns the amount unchanged when the unit is unchanged", () => {
+    assert.equal(convertContribution({ amount: 5, from: "usd", to: "usd" }), 5);
+  });
+  it("is null when salary is needed but missing", () => {
+    assert.equal(convertContribution({ amount: 5, from: "usd", to: "pct", salary: 0 }), null);
+    assert.equal(convertContribution({ amount: 5, from: "pct", to: "usd", salary: NaN }), null);
+  });
+});
+
+describe("DEFAULT_CONTRIBUTION", () => {
+  it("has defaults for each unit", () => {
+    assert.deepEqual({ ...DEFAULT_CONTRIBUTION }, { usd: 500, pct: 6 });
+    assert.ok(Object.isFrozen(DEFAULT_CONTRIBUTION));
+  });
+});
+
+describe("solveEmployeeAmount", () => {
+  const p = { balance: 50_000, annualReturn: 0.07, months: 300, target: 1_000_000, unit: "usd" };
+  it("matches requiredMonthlyContribution with neutral inputs", () => {
+    const expected = requiredMonthlyContribution({ ...base, fire: 1_000_000, retirementAge: 55 });
+    close(solveEmployeeAmount(p), expected, 1e-4);
+    assert.ok(Math.abs(solveEmployeeAmount(p) - expected) < 0.01);
+  });
+  it("lands on the target when plugged back in", () => {
+    const amount = solveEmployeeAmount(p);
+    const { total } = contributionSchedule({ months: 300, unit: "usd", amount });
+    const end = simulate({ balance: 50_000, contributions: total, monthlyReturns: monthlyRate(0.07) })[300];
+    assert.ok(end >= 1_000_000 * (1 - 1e-9));
+    assert.ok(end < 1_000_000 + 100);
+  });
+  it("is 0 when the balance alone reaches the target", () => {
+    assert.equal(solveEmployeeAmount({ ...p, balance: 900_000 }), 0);
+  });
+  it("is null when there is no time left", () => {
+    assert.equal(solveEmployeeAmount({ ...p, months: 0 }), null);
+    assert.equal(solveEmployeeAmount({ ...p, months: -5 }), null);
+  });
+  it("asks for less when there is an employer match", () => {
+    const withMatch = solveEmployeeAmount({ ...p, salary: 120_000, matchRate: 1, matchCap: 0.05 });
+    assert.ok(withMatch < solveEmployeeAmount(p));
+  });
+  it("asks for less when raises grow the contribution", () => {
+    assert.ok(solveEmployeeAmount({ ...p, raise: 0.03 }) < solveEmployeeAmount(p));
+  });
+  it("solves in percent of salary, equivalent to the dollar answer with no raise", () => {
+    const usd = solveEmployeeAmount(p);
+    const pct = solveEmployeeAmount({ ...p, unit: "pct", salary: 120_000 });
+    close(pct, ((usd * 12) / 120_000) * 100, 1e-3);
+  });
+  it("is null for a percent target without salary", () => {
+    assert.equal(solveEmployeeAmount({ ...p, unit: "pct" }), null);
+  });
+  it("works at a zero return", () => {
+    close(solveEmployeeAmount({ ...p, annualReturn: 0, balance: 0, months: 100, target: 100_000 }), 1_000, 1e-4);
   });
 });
