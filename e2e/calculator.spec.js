@@ -309,3 +309,88 @@ test.describe("coast path and sensitivity", () => {
     await expect(row.locator("td").nth(1)).toContainText("$1,072/mo");
   });
 });
+
+const simulate = (page) => page.locator("#returnModel").selectOption("montecarlo");
+const datasets = (page) => page.evaluate(() => Chart.getChart(document.getElementById("chart")).data.datasets.map((d) => ({ label: d.label, n: d.data.length })));
+
+test.describe("simulated ups and downs", () => {
+  test("is off by default: no card, no band", async ({ page }) => {
+    await expect(page.locator("#cardRisk")).toBeHidden();
+    expect((await datasets(page)).filter((d) => d.n > 0).map((d) => d.label)).not.toContain("Likely range (10th–90th percentile)");
+  });
+
+  test("shows the risk card and a percentile band in contribution mode", async ({ page }) => {
+    await simulate(page);
+    await expect(page.locator("#cardRisk")).toBeVisible();
+    const rows = page.locator("#riskList > div");
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(0)).toContainText("Full retirement age");
+    await expect(rows.nth(1)).toContainText("Chance that stopping at 44 years");
+    await expect(rows.nth(2)).toContainText("90% confidence");
+    await expect(page.locator("#riskHint")).toContainText("1,000 simulated markets");
+    await expect(page.locator("#cardRisk")).not.toHaveClass(/is-busy/);
+    const ds = await datasets(page);
+    expect(ds.find((d) => d.label === "Likely range (10th–90th percentile)").n).toBeGreaterThan(10);
+    expect(ds.map((d) => d.label)).toContain("With contributions (median)");
+    expect(await legend(page)).toEqual([
+      "With contributions (median)",
+      "Current balance only",
+      "Contribute until coast, then stop",
+      "CoastFIRE target",
+      "Likely range (10th–90th percentile)",
+    ]);
+  });
+
+  test("shows the contribution for 90% confidence in target mode", async ({ page }) => {
+    await page.locator('input[name="mode"][value="target"]').check();
+    await simulate(page);
+    const rows = page.locator("#riskList > div");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("Contribution for 90% confidence");
+    await expect(rows.nth(0)).toContainText("if returns were steady");
+    await expect(rows.nth(0).locator("dd")).toContainText("/mo");
+  });
+
+  test("results update when inputs change and stay reproducible", async ({ page }) => {
+    await simulate(page);
+    await expect(page.locator("#riskList > div")).toHaveCount(3);
+    const first = await page.locator("#riskList").innerText();
+    const text = () => page.locator("#riskList").innerText();
+    await page.locator("#contribution").fill("1,500");
+    await expect.poll(text).not.toBe(first);
+    await page.locator("#contribution").fill("500");
+    await expect.poll(text).toBe(first);
+  });
+
+  test("switching back to steady restores the original chart and hides the card", async ({ page }) => {
+    await simulate(page);
+    await expect(page.locator("#riskList > div")).toHaveCount(3);
+    await page.locator("#returnModel").selectOption("fixed");
+    await expect(page.locator("#cardRisk")).toBeHidden();
+    expect(await legend(page)).toEqual([
+      "With monthly contributions",
+      "Current balance only",
+      "Contribute until coast, then stop",
+      "CoastFIRE target",
+    ]);
+  });
+
+  test("custom volatility only appears for a custom portfolio with simulation on", async ({ page }) => {
+    const field = page.locator("#customVolatilityField");
+    await page.locator("#portfolio").selectOption("custom");
+    await expect(field).toBeHidden();
+    await simulate(page);
+    await expect(field).toBeVisible();
+    await page.locator("#customVolatility").fill("0");
+    await expect(page.locator("#riskHint")).toContainText("0% yearly volatility");
+  });
+
+  test("the choice is remembered and reset", async ({ page }) => {
+    await simulate(page);
+    await page.reload();
+    await expect(page.locator("#returnModel")).toHaveValue("montecarlo");
+    await expect(page.locator("#riskList > div")).toHaveCount(3);
+    await page.locator("#reset").click();
+    await expect(page.locator("#returnModel")).toHaveValue("fixed");
+  });
+});

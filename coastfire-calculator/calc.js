@@ -7,12 +7,12 @@ export const DEFAULT_MAX_AGE = 100;
 const EPSILON = 1e-9;
 
 export const PORTFOLIOS = Object.freeze([
-  Object.freeze({ id: "sp500", label: "100% S&P 500", rate: 0.07, note: "Long-run average real return of the S&P 500" }),
-  Object.freeze({ id: "total-market", label: "Total US stock market", rate: 0.068, note: "Broad US equities incl. small/mid caps" }),
-  Object.freeze({ id: "global-80-20", label: "80/20 global stocks/bonds", rate: 0.06, note: "Aggressive diversified portfolio" }),
-  Object.freeze({ id: "target-date", label: "Target-date fund", rate: 0.055, note: "Glide path that de-risks toward retirement" }),
-  Object.freeze({ id: "balanced-60-40", label: "60/40 stocks/bonds", rate: 0.05, note: "Classic balanced portfolio" }),
-  Object.freeze({ id: "conservative-40-60", label: "40/60 stocks/bonds", rate: 0.04, note: "Conservative, bond-heavy portfolio" }),
+  Object.freeze({ id: "sp500", label: "100% S&P 500", rate: 0.07, volatility: 0.17, note: "Long-run average real return of the S&P 500" }),
+  Object.freeze({ id: "total-market", label: "Total US stock market", rate: 0.068, volatility: 0.17, note: "Broad US equities incl. small/mid caps" }),
+  Object.freeze({ id: "global-80-20", label: "80/20 global stocks/bonds", rate: 0.06, volatility: 0.14, note: "Aggressive diversified portfolio" }),
+  Object.freeze({ id: "target-date", label: "Target-date fund", rate: 0.055, volatility: 0.11, note: "Glide path that de-risks toward retirement" }),
+  Object.freeze({ id: "balanced-60-40", label: "60/40 stocks/bonds", rate: 0.05, volatility: 0.1, note: "Classic balanced portfolio" }),
+  Object.freeze({ id: "conservative-40-60", label: "40/60 stocks/bonds", rate: 0.04, volatility: 0.07, note: "Conservative, bond-heavy portfolio" }),
 ]);
 
 export const DEFAULT_PORTFOLIO_ID = "sp500";
@@ -24,6 +24,15 @@ export function resolveReturn(presetId, customRate) {
   }
   const preset = PORTFOLIOS.find((p) => p.id === presetId);
   return preset ? preset.rate : defaultRate();
+}
+
+export const DEFAULT_CUSTOM_VOLATILITY = 0.15;
+
+/** Annual volatility (standard deviation of returns) for a preset id, or the custom value for "custom". */
+export function resolveVolatility(presetId, customVolatility) {
+  if (presetId === "custom") return Number.isFinite(customVolatility) ? customVolatility : DEFAULT_CUSTOM_VOLATILITY;
+  const preset = PORTFOLIOS.find((p) => p.id === presetId);
+  return preset ? preset.volatility : PORTFOLIOS.find((p) => p.id === DEFAULT_PORTFOLIO_ID).volatility;
 }
 
 function defaultRate() {

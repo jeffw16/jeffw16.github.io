@@ -40,6 +40,11 @@ describe("stampText", () => {
     assert.equal(stampText("app.js", js, "abc"),
       'import { a } from "./calc.js?v=abc";\nimport "./side.js?v=abc";\nawait import("./lazy.js?v=abc");\nimport fs from "node:fs";');
   });
+  it("stamps worker URLs but not other new URL() calls", () => {
+    const js = 'new Worker(new URL("./mc-worker.js", import.meta.url), { type: "module" });\nnew URL("https://x.test/a.js");';
+    assert.equal(stampText("app.js", js, "abc"),
+      'new Worker(new URL("./mc-worker.js?v=abc", import.meta.url), { type: "module" });\nnew URL("https://x.test/a.js");');
+  });
   it("leaves CSS and other files unchanged", () => {
     assert.equal(stampText("style.css", '@import "x.css";', "abc"), '@import "x.css";');
   });
