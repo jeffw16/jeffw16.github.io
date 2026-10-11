@@ -74,32 +74,67 @@ export function isCoastReached(balance, target) {
 }
 
 /**
- * Earliest age (in 1-month steps) at which the contributed balance reaches the
- * CoastFIRE target. Returns `age` if already there, or null if it isn't reached
- * by retirement age (or maxAge).
+ * Month-by-month balances: out[0] = balance, then each month grows by that
+ * month's return and receives that month's contribution at month end.
+ * `monthlyReturns` is an array (one monthly rate per month) or a single number
+ * used for every month. Returns a Float64Array of length contributions.length + 1.
  */
-export function findCoastAge({ age, balance, monthlyContribution, annualReturn, fire, retirementAge, maxAge = DEFAULT_MAX_AGE }) {
-  const lastAge = Math.min(retirementAge, maxAge);
-  const months = Math.round((lastAge - age) * 12);
-  for (let n = 0; n <= months; n++) {
-    const a = age + n / 12;
-    const b = balanceWithContrib(balance, monthlyContribution, annualReturn, n);
-    if (isCoastReached(b, coastTarget({ fire, annualReturn, age: a, retirementAge }))) return a;
+export function simulate({ balance, contributions, monthlyReturns }) {
+  const months = contributions.length;
+  const constant = typeof monthlyReturns === "number";
+  const out = new Float64Array(months + 1);
+  out[0] = balance;
+  for (let n = 0; n < months; n++) {
+    out[n + 1] = out[n] * (1 + (constant ? monthlyReturns : monthlyReturns[n])) + contributions[n];
+  }
+  return out;
+}
+
+/** A contribution schedule of the same amount every month. */
+export function constantSchedule(monthly, months) {
+  return new Float64Array(Math.max(0, months)).fill(monthly);
+}
+
+/**
+ * First month index n whose balance reaches `targetAt(n)` (within tolerance),
+ * or null if none does.
+ */
+export function firstMonthAtOrAbove(balances, targetAt) {
+  for (let n = 0; n < balances.length; n++) {
+    if (isCoastReached(balances[n], targetAt(n))) return n;
   }
   return null;
 }
 
 /**
  * Earliest age (in 1-month steps) at which the contributed balance reaches the
- * full FIRE number. Returns null if not reached by maxAge.
+ * CoastFIRE target. Returns `age` if already there, or null if it isn't reached
+ * by retirement age (or maxAge). `contributions` optionally replaces the
+ * constant `monthlyContribution` with a per-month schedule.
  */
-export function findFireAge({ age, balance, monthlyContribution, annualReturn, fire, maxAge = DEFAULT_MAX_AGE }) {
+export function findCoastAge({ age, balance, monthlyContribution, annualReturn, fire, retirementAge, maxAge = DEFAULT_MAX_AGE, contributions }) {
+  const lastAge = Math.min(retirementAge, maxAge);
+  const months = Math.round((lastAge - age) * 12);
+  if (months < 0) return null;
+  const schedule = contributions ? contributions.slice(0, months) : constantSchedule(monthlyContribution, months);
+  const balances = simulate({ balance, contributions: schedule, monthlyReturns: monthlyRate(annualReturn) });
+  const n = firstMonthAtOrAbove(balances, (k) => coastTarget({ fire, annualReturn, age: age + k / 12, retirementAge }));
+  return n === null ? null : age + n / 12;
+}
+
+/**
+ * Earliest age (in 1-month steps) at which the contributed balance reaches the
+ * balance needed to fully retire. Returns null if not reached by maxAge.
+ * `requiredAt(age)` gives the balance needed at an age (default: constant `fire`);
+ * `contributions` optionally replaces the constant `monthlyContribution`.
+ */
+export function findFireAge({ age, balance, monthlyContribution, annualReturn, fire, maxAge = DEFAULT_MAX_AGE, requiredAt = () => fire, contributions }) {
   const months = Math.round((maxAge - age) * 12);
-  for (let n = 0; n <= months; n++) {
-    const b = balanceWithContrib(balance, monthlyContribution, annualReturn, n);
-    if (b >= fire * (1 - EPSILON)) return age + n / 12;
-  }
-  return null;
+  if (months < 0) return null;
+  const schedule = contributions ? contributions.slice(0, months) : constantSchedule(monthlyContribution, months);
+  const balances = simulate({ balance, contributions: schedule, monthlyReturns: monthlyRate(annualReturn) });
+  const n = firstMonthAtOrAbove(balances, (k) => requiredAt(age + k / 12));
+  return n === null ? null : age + n / 12;
 }
 
 /**
@@ -123,18 +158,23 @@ export function chartEndAge({ age, retirementAge, fireAge, maxAge = DEFAULT_MAX_
   return Math.min(maxAge, Math.ceil(milestone + padding));
 }
 
-/** Yearly series for the chart, from `age` through `endAge` inclusive. */
-export function buildSeries({ age, balance, monthlyContribution, annualReturn, fire, retirementAge, endAge }) {
+/**
+ * Yearly series for the chart, from `age` through `endAge` inclusive.
+ * `contributions` optionally replaces the constant `monthlyContribution`.
+ */
+export function buildSeries({ age, balance, monthlyContribution, annualReturn, fire, retirementAge, endAge, contributions }) {
+  const years = Math.max(0, Math.floor(endAge - age));
+  const schedule = contributions ? contributions.slice(0, years * 12) : constantSchedule(monthlyContribution, years * 12);
+  const balances = simulate({ balance, contributions: schedule, monthlyReturns: monthlyRate(annualReturn) });
   const ages = [];
   const noContrib = [];
   const withContrib = [];
   const target = [];
-  const years = Math.max(0, Math.floor(endAge - age));
   for (let t = 0; t <= years; t++) {
     const a = age + t;
     ages.push(a);
     noContrib.push(balanceNoContrib(balance, annualReturn, t));
-    withContrib.push(balanceWithContrib(balance, monthlyContribution, annualReturn, t * 12));
+    withContrib.push(balances[Math.min(t * 12, balances.length - 1)]);
     target.push(coastTarget({ fire, annualReturn, age: a, retirementAge }));
   }
   return { ages, noContrib, withContrib, coastTarget: target };

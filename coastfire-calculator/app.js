@@ -14,9 +14,9 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=13182f91f0";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "./format.js?v=13182f91f0";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState } from "./persist.js?v=13182f91f0";
+} from "./calc.js?v=cd07937391";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "./format.js?v=cd07937391";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState } from "./persist.js?v=cd07937391";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");

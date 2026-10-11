@@ -11,6 +11,9 @@ import {
   balanceNoContrib,
   balanceWithContrib,
   isCoastReached,
+  simulate,
+  constantSchedule,
+  firstMonthAtOrAbove,
   findCoastAge,
   findFireAge,
   requiredMonthlyContribution,
@@ -276,5 +279,97 @@ describe("splitAge", () => {
   });
   it("rounds to the nearest month", () => {
     assert.deepEqual(splitAge(42.999), { years: 43, months: 0 });
+  });
+});
+
+describe("simulate", () => {
+  it("starts at the balance and has one more entry than there are months", () => {
+    const out = simulate({ balance: 100, contributions: [0, 0, 0], monthlyReturns: 0.01 });
+    assert.equal(out.length, 4);
+    assert.equal(out[0], 100);
+  });
+  it("grows each month then adds the contribution at month end", () => {
+    const out = simulate({ balance: 1000, contributions: [100, 200], monthlyReturns: [0.1, 0.2] });
+    close(out[1], 1000 * 1.1 + 100);
+    close(out[2], (1000 * 1.1 + 100) * 1.2 + 200);
+  });
+  it("treats a number as the same monthly rate every month", () => {
+    const a = simulate({ balance: 500, contributions: [10, 10, 10], monthlyReturns: 0.02 });
+    const b = simulate({ balance: 500, contributions: [10, 10, 10], monthlyReturns: [0.02, 0.02, 0.02] });
+    assert.deepEqual([...a], [...b]);
+  });
+  it("matches balanceWithContrib for a range of rates and horizons", () => {
+    for (const r of [0, 0.04, 0.07, -0.02]) {
+      const out = simulate({ balance: 12_345, contributions: constantSchedule(321, 420), monthlyReturns: monthlyRate(r) });
+      for (const n of [0, 1, 12, 420]) close(out[n], balanceWithContrib(12_345, 321, r, n), 1e-9);
+    }
+  });
+  it("returns just the balance for zero months and does not mutate inputs", () => {
+    const contributions = Object.freeze([1, 2]);
+    const monthlyReturns = Object.freeze([0.1, 0.1]);
+    assert.deepEqual([...simulate({ balance: 7, contributions: [], monthlyReturns: 0.5 })], [7]);
+    simulate({ balance: 7, contributions, monthlyReturns });
+    assert.deepEqual([...contributions], [1, 2]);
+  });
+});
+
+describe("constantSchedule", () => {
+  it("repeats the amount for each month", () => {
+    assert.deepEqual([...constantSchedule(250, 3)], [250, 250, 250]);
+  });
+  it("is empty for zero or negative months", () => {
+    assert.equal(constantSchedule(250, 0).length, 0);
+    assert.equal(constantSchedule(250, -4).length, 0);
+  });
+});
+
+describe("firstMonthAtOrAbove", () => {
+  it("returns the first index meeting its target", () => {
+    assert.equal(firstMonthAtOrAbove([1, 2, 3, 4], () => 3), 2);
+  });
+  it("uses a per-month target", () => {
+    assert.equal(firstMonthAtOrAbove([1, 2, 3, 4], (n) => 10 - 2 * n), 3);
+  });
+  it("accepts a balance within floating-point tolerance of the target", () => {
+    assert.equal(firstMonthAtOrAbove([99.99999999999], () => 100), 0);
+  });
+  it("returns null when never reached or empty", () => {
+    assert.equal(firstMonthAtOrAbove([1, 2], () => 5), null);
+    assert.equal(firstMonthAtOrAbove([], () => 0), null);
+  });
+});
+
+describe("regression pins (age 30, $50k, $500/mo, 7%, $1M FIRE, 65)", () => {
+  it("coast age is 30 + 121 months", () => {
+    close(findCoastAge(base), 30 + 121 / 12, 1e-12);
+  });
+  it("FIRE age is 30 + 366 months", () => {
+    close(findFireAge(base), 30 + 366 / 12, 1e-12);
+  });
+  it("required contribution to retire at 55 rounds to $931", () => {
+    assert.equal(Math.round(requiredMonthlyContribution({ ...base, retirementAge: 55 })), 931);
+  });
+});
+
+describe("findCoastAge / findFireAge extensions", () => {
+  it("findCoastAge accepts a schedule equal to the constant contribution", () => {
+    const contributions = constantSchedule(500, 35 * 12);
+    assert.equal(findCoastAge({ ...base, contributions }), findCoastAge(base));
+  });
+  it("findCoastAge is null when the age window is negative", () => {
+    assert.equal(findCoastAge({ ...base, age: 70 }), null);
+  });
+  it("findFireAge uses requiredAt per age", () => {
+    // Needing less each year pulls the FIRE age earlier than a constant need.
+    const earlier = findFireAge({ ...base, requiredAt: (a) => 1_000_000 - (a - 30) * 10_000 });
+    assert.ok(earlier < findFireAge(base));
+  });
+  it("findFireAge accepts a contribution schedule", () => {
+    const contributions = constantSchedule(1000, 70 * 12);
+    assert.ok(findFireAge({ ...base, contributions }) < findFireAge(base));
+  });
+  it("does not mutate a frozen schedule", () => {
+    const contributions = Object.freeze(Array.from({ length: 840 }, () => 500));
+    assert.doesNotThrow(() => findFireAge({ ...base, contributions }));
   });
 });
