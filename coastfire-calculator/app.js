@@ -14,9 +14,9 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=01122d71ba";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "./format.js?v=01122d71ba";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState } from "./persist.js?v=01122d71ba";
+} from "./calc.js?v=13182f91f0";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts } from "./format.js?v=13182f91f0";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState } from "./persist.js?v=13182f91f0";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -308,6 +308,8 @@ const milestonePlugin = {
 };
 
 function drawChart(series, milestones) {
+  $("chartError").hidden = !!window.Chart;
+  document.querySelector(".chart-wrap").hidden = !window.Chart;
   if (!window.Chart) return;
   const toPoints = (ys) => series.ages.map((x, k) => ({ x, y: ys[k] }));
   const datasets = [

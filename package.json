@@ -4,6 +4,12 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "test:e2e": "playwright test",
+    "serve": "node scripts/serve.mjs",
     "stamp": "node scripts/stamp-assets.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "chart.js": "4.4.1"
   }
 }
