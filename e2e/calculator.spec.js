@@ -1,4 +1,4 @@
-import { test, expect, URL_PATH } from "./fixtures.js";
+import { test, expect, URL_PATH, CHART_JS } from "./fixtures.js";
 import {
   coastTarget, findCoastAge, findFireAge, requiredMonthlyContribution,
 } from "../coastfire-calculator/calc.js";
@@ -392,5 +392,147 @@ test.describe("simulated ups and downs", () => {
     await expect(page.locator("#riskList > div")).toHaveCount(3);
     await page.locator("#reset").click();
     await expect(page.locator("#returnModel")).toHaveValue("fixed");
+  });
+});
+
+// A fresh browser context (no saved inputs) with Chart.js served locally.
+async function freshPage(browser, options = {}) {
+  const context = await browser.newContext(options);
+  await context.route("https://cdn.jsdelivr.net/npm/chart.js@4.4.1/**", (route) =>
+    route.fulfill({ body: CHART_JS, contentType: "text/javascript" }));
+  return { context, page: await context.newPage() };
+}
+const search = (page) => new URL(page.url()).search;
+
+test.describe("shareable links", () => {
+  test("the address bar tracks only the values that differ from the defaults", async ({ page }) => {
+    expect(search(page)).toBe("");
+    await page.locator("#age").fill("41");
+    await page.locator("#balance").fill("123,456");
+    await expect.poll(() => search(page)).toBe("?age=41&balance=123456");
+    await page.locator("#reset").click();
+    await expect.poll(() => search(page)).toBe("");
+  });
+
+  test("Copy link copies the current link and confirms", async ({ browser }) => {
+    const { context, page } = await freshPage(browser, { permissions: ["clipboard-read", "clipboard-write"] });
+    await page.goto(URL_PATH);
+    await page.locator("#age").fill("44");
+    await page.locator("#copyLink").click();
+    await expect(page.locator("#copyLink")).toHaveText("Copied ✓");
+    await expect(page.locator("#copyStatus")).toHaveText("Link copied");
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(new URL(copied).search).toBe("?age=44");
+    expect(new URL(copied).pathname).toBe(URL_PATH);
+    await expect(page.locator("#copyLink")).toHaveText("Copy link", { timeout: 5000 });
+    await context.close();
+  });
+
+  test("a link opened in a fresh browser reproduces the scenario", async ({ page, browser }) => {
+    await page.locator('input[name="mode"][value="target"]').check();
+    await page.locator("#age").fill("35");
+    await page.locator("#balance").fill("80,000");
+    await page.locator("#spending").fill("60,000");
+    await page.locator("#portfolio").selectOption("balanced-60-40");
+    await expect.poll(() => search(page)).toContain("mode=target");
+    const original = {
+      primary: await page.locator("#cardPrimary").innerText(),
+      fire: await card(page, "cardFire").innerText(),
+      coast: await card(page, "cardCoast").innerText(),
+    };
+
+    const { context, page: other } = await freshPage(browser);
+    await other.goto(page.url());
+    await expect(other.locator("#age")).toHaveValue("35");
+    await expect(other.locator("#balance")).toHaveValue("80,000");
+    await expect(other.locator("#spending")).toHaveValue("60,000");
+    await expect.poll(() => other.locator("#cardPrimary").innerText()).toBe(original.primary);
+    await expect.poll(() => card(other, "cardFire").innerText()).toBe(original.fire);
+    await expect.poll(() => card(other, "cardCoast").innerText()).toBe(original.coast);
+    await context.close();
+  });
+
+  test("a link doesn't overwrite the viewer's saved inputs until they edit something", async ({ browser }) => {
+    const { context, page } = await freshPage(browser);
+    await page.goto(URL_PATH);
+    await page.locator("#age").fill("41");
+    await page.reload();
+    await page.goto(`${URL_PATH}?age=50`);
+    await expect(page.locator("#age")).toHaveValue("50");
+    const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem("coastfire-calculator:v1")).values.age);
+    expect(await saved()).toBe("41");
+    await page.locator("#balance").fill("60,000");
+    expect(await saved()).toBe("50");
+    await context.close();
+  });
+
+  test("a tampered query falls back safely", async ({ browser }) => {
+    const { context, page } = await freshPage(browser);
+    await page.goto(`${URL_PATH}?mode=evil&age=abc&balance=12x&portfolio=nope&evil=1`);
+    await expect(page.locator("#error")).toBeHidden();
+    await expect(page.locator("#age")).toHaveValue("30");
+    await expect(page.locator("#balance")).toHaveValue("50,000");
+    await expect(page.locator('input[name="mode"][value="contribution"]')).toBeChecked();
+    await expect(card(page, "cardFire")).toHaveText("$1,111,111");
+    await context.close();
+  });
+
+  test("unrelated parameters such as ?v= leave saved inputs in charge", async ({ browser }) => {
+    const { context, page } = await freshPage(browser);
+    await page.goto(URL_PATH);
+    await page.locator("#age").fill("41");
+    await page.goto(`${URL_PATH}?v=123&utm_source=x`);
+    await expect(page.locator("#age")).toHaveValue("41");
+    await context.close();
+  });
+
+  test("a link that changes spending but not the FIRE number re-derives it", async ({ browser }) => {
+    const { context, page } = await freshPage(browser);
+    await page.goto(`${URL_PATH}?spending=60000`);
+    await expect(page.locator("#fire")).toHaveValue("1,666,667");
+    await context.close();
+  });
+});
+
+test.describe("explanations", () => {
+  const tip = (page, id) => page.locator(`#${id}`);
+
+  test("an info button opens its explanation and Escape closes it", async ({ page }) => {
+    await page.getByRole("button", { name: "What is the FIRE number?" }).click();
+    await expect(tip(page, "tip-fire")).toBeVisible();
+    await expect(tip(page, "tip-fire").locator("h2")).toHaveText("FIRE number");
+    await page.keyboard.press("Escape");
+    await expect(tip(page, "tip-fire")).toBeHidden();
+  });
+
+  test("explanations are hidden until opened", async ({ page }) => {
+    for (const id of ["tip-coastfire", "tip-fire", "tip-swr", "tip-return", "tip-tax", "tip-bridge", "tip-coastpath", "tip-success"]) {
+      await expect(tip(page, id)).toBeHidden();
+    }
+  });
+
+  test("works from the keyboard", async ({ page }) => {
+    await page.getByRole("button", { name: "About the safe withdrawal rate" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(tip(page, "tip-swr")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(tip(page, "tip-swr")).toBeHidden();
+  });
+
+  test("opening another explanation closes the first; clicking outside closes it", async ({ page }) => {
+    await page.getByRole("button", { name: "About the tax rate" }).click();
+    await expect(tip(page, "tip-tax")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "About real returns" }).click();
+    await expect(tip(page, "tip-return")).toBeVisible();
+    await expect(tip(page, "tip-tax")).toBeHidden();
+    await page.mouse.click(5, 5);
+    await expect(tip(page, "tip-return")).toBeHidden();
+  });
+
+  test("the simulation explanation sits on the risk card", async ({ page }) => {
+    await page.locator("#returnModel").selectOption("montecarlo");
+    await page.getByRole("button", { name: "About the simulated chances" }).click();
+    await expect(tip(page, "tip-success")).toContainText("1,000 simulated markets");
   });
 });

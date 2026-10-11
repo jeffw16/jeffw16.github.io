@@ -88,3 +88,67 @@ describe("savedKeys", () => {
     assert.deepEqual(savedKeys(JSON.stringify({ version: 1, values: null })), []);
   });
 });
+
+import { encodeQuery, decodeQuery } from "../coastfire-calculator/persist.js";
+
+describe("encodeQuery", () => {
+  const kinds = { balance: "amount", age: "number" };
+  it("is empty when nothing differs from the defaults", () => {
+    assert.equal(encodeQuery({ ...defaults }, defaults, kinds), "");
+  });
+  it("includes only the values that differ", () => {
+    assert.equal(encodeQuery({ ...defaults, age: "41" }, defaults, kinds), "?age=41");
+  });
+  it("stores amounts without commas", () => {
+    assert.equal(encodeQuery({ ...defaults, balance: "1,234,567" }, defaults, kinds), "?balance=1234567");
+  });
+  it("keeps a cleared field as an empty value", () => {
+    assert.equal(encodeQuery({ ...defaults, balance: "" }, defaults, kinds), "?balance=");
+  });
+  it("encodes special characters and skips non-string values and unknown keys", () => {
+    assert.equal(encodeQuery({ ...defaults, mode: "a b&c", age: 5, extra: "x" }, defaults, kinds), "?mode=a+b%26c");
+  });
+  it("does not mutate its inputs", () => {
+    const values = Object.freeze({ ...defaults, age: "41" });
+    assert.doesNotThrow(() => encodeQuery(values, defaults, kinds));
+  });
+});
+
+describe("decodeQuery", () => {
+  const kinds = { balance: "amount", age: "number" };
+  it("round-trips through encodeQuery, regrouping amounts", () => {
+    const values = { mode: "target", age: "42", balance: "1,234,567", portfolio: "custom" };
+    assert.deepEqual(decodeQuery(encodeQuery(values, defaults, kinds), defaults, allowed, kinds), values);
+  });
+  it("fills missing fields with the defaults (a link defines the whole scenario)", () => {
+    assert.deepEqual(decodeQuery("?age=45", defaults, allowed, kinds), { ...defaults, age: "45" });
+  });
+  it("is null for an empty query or one with no recognised field", () => {
+    assert.equal(decodeQuery("", defaults, allowed, kinds), null);
+    assert.equal(decodeQuery("?v=abc123&utm_source=x", defaults, allowed, kinds), null);
+  });
+  it("ignores unknown parameters but keeps recognised ones", () => {
+    assert.deepEqual(decodeQuery("?v=abc&age=50&evil=1", defaults, allowed, kinds), { ...defaults, age: "50" });
+  });
+  it("rejects values outside the allowed list", () => {
+    assert.equal(decodeQuery("?mode=evil", defaults, allowed, kinds), null);
+    assert.deepEqual(decodeQuery("?mode=evil&age=41", defaults, allowed, kinds), { ...defaults, age: "41" });
+  });
+  it("rejects non-numeric amounts and numbers", () => {
+    assert.equal(decodeQuery("?age=abc", defaults, allowed, kinds), null);
+    assert.equal(decodeQuery("?balance=12x", defaults, allowed, kinds), null);
+    assert.equal(decodeQuery("?balance=1e9", defaults, allowed, kinds), null);
+    assert.equal(decodeQuery("?age=1.2.3", defaults, allowed, kinds), null);
+  });
+  it("accepts decimals, negatives for numbers, and empty values", () => {
+    assert.deepEqual(decodeQuery("?age=-2.5&balance=1000.50", defaults, allowed, kinds), { ...defaults, age: "-2.5", balance: "1,000.50" });
+    assert.deepEqual(decodeQuery("?balance=", defaults, allowed, kinds), { ...defaults, balance: "" });
+  });
+  it("decodes escaped characters in choice fields", () => {
+    assert.deepEqual(decodeQuery("?portfolio=custom", defaults, allowed, kinds), { ...defaults, portfolio: "custom" });
+  });
+  it("does not mutate the defaults", () => {
+    decodeQuery("?age=99", defaults, allowed, kinds);
+    assert.equal(defaults.age, "30");
+  });
+});

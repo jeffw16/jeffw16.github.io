@@ -295,6 +295,7 @@ input[aria-invalid="true"] { border-color: var(--error); }
 }
 
 .card {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -444,3 +445,41 @@ input[readonly] { background: var(--surface-2); color: var(--text-2); cursor: de
   .risk-list > div { grid-template-columns: 1fr; }
   .risk-list dd { text-align: left; }
 }
+
+/* ---------- Info popovers ---------- */
+
+.label-row { display: flex; align-items: center; gap: 6px; }
+
+.info {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font: italic 700 0.75rem/1 Georgia, "Times New Roman", serif;
+  cursor: pointer;
+}
+.info:hover { color: var(--text); border-color: var(--text-3); }
+.info:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.info-corner { position: absolute; top: 14px; right: 14px; }
+.chart-title .info { vertical-align: middle; margin-left: 4px; }
+
+.tip {
+  max-width: min(92vw, 380px);
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+.tip h2 { margin: 0 0 6px; font-size: 1rem; }
+.tip p { margin: 0; font-size: 0.875rem; line-height: 1.5; color: var(--text-2); }
+.tip::backdrop { background: rgba(0, 0, 0, 0.25); }
+/* Without popover support the tips would render inline; hide them. */
+@supports not selector(:popover-open) { .tip { display: none; } }

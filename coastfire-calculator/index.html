@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=b0f54e5bbd">
+  <link rel="stylesheet" href="style.css?v=39091f289f">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=b0f54e5bbd"></script>
+  <script type="module" src="app.js?v=39091f289f"></script>
 </head>
 <body>
   <main class="page">
@@ -126,7 +126,7 @@
           </div>
 
           <div class="field">
-            <label for="swr">Safe withdrawal rate</label>
+            <div class="label-row"><label for="swr">Safe withdrawal rate</label><button type="button" class="info" popovertarget="tip-swr" aria-label="About the safe withdrawal rate">i</button></div>
             <div class="affix" data-suffix="%">
               <input id="swr" name="swr" type="number" inputmode="decimal" min="0.5" max="10" step="0.1" value="4">
             </div>
@@ -134,7 +134,7 @@
           </div>
 
           <div class="field">
-            <label for="taxRate">Effective tax rate on withdrawals</label>
+            <div class="label-row"><label for="taxRate">Effective tax rate on withdrawals</label><button type="button" class="info" popovertarget="tip-tax" aria-label="About the tax rate">i</button></div>
             <div class="affix" data-suffix="%">
               <input id="taxRate" name="taxRate" type="number" inputmode="decimal" min="0" max="60" step="1" value="10">
             </div>
@@ -142,7 +142,7 @@
           </div>
 
           <div class="field">
-            <label for="benefit">Social Security / pension (per year)</label>
+            <div class="label-row"><label for="benefit">Social Security / pension (per year)</label><button type="button" class="info" popovertarget="tip-bridge" aria-label="About the Social Security bridge">i</button></div>
             <div class="affix" data-prefix="$">
               <input id="benefit" name="benefit" type="text" inputmode="decimal" autocomplete="off" data-amount value="0">
             </div>
@@ -167,7 +167,7 @@
           <summary>Investments</summary>
 
           <div class="field">
-            <label for="portfolio">Portfolio / strategy</label>
+            <div class="label-row"><label for="portfolio">Portfolio / strategy</label><button type="button" class="info" popovertarget="tip-return" aria-label="About real returns">i</button></div>
             <select id="portfolio" name="portfolio"></select>
             <p class="hint" id="portfolioNote"></p>
           </div>
@@ -199,6 +199,8 @@
 
         <div class="form-footer">
           <button type="button" id="reset" class="reset">Reset to defaults</button>
+          <button type="button" id="copyLink" class="reset">Copy link</button>
+          <span id="copyStatus" class="visually-hidden" role="status"></span>
           <p class="hint">Your numbers are saved in this browser.</p>
         </div>
       </form>
@@ -213,16 +215,19 @@
             <p class="card-sub"></p>
           </article>
           <article class="card card-hero" id="cardSecondary">
+            <button type="button" class="info info-corner" popovertarget="tip-coastfire" aria-label="What is CoastFIRE?">i</button>
             <h2 class="card-label"></h2>
             <p class="card-value"></p>
             <p class="card-sub"></p>
           </article>
           <article class="card" id="cardFire">
+            <button type="button" class="info info-corner" popovertarget="tip-fire" aria-label="What is the FIRE number?">i</button>
             <h2 class="card-label">FIRE number</h2>
             <p class="card-value"></p>
             <p class="card-sub"></p>
           </article>
           <article class="card" id="cardCoast">
+            <button type="button" class="info info-corner" popovertarget="tip-coastfire" aria-label="What is CoastFIRE?">i</button>
             <h2 class="card-label">CoastFIRE number today</h2>
             <p class="card-value"></p>
             <p class="card-sub"></p>
@@ -230,6 +235,7 @@
         </div>
 
         <article class="card card-wide" id="cardRisk" aria-live="polite" hidden>
+            <button type="button" class="info info-corner" popovertarget="tip-success" aria-label="About the simulated chances">i</button>
           <h2 class="card-label">With market ups and downs</h2>
           <dl class="risk-list" id="riskList"></dl>
           <p class="card-sub" id="riskHint"></p>
@@ -240,7 +246,7 @@
         <p id="limitWarning" class="note warn" role="note" hidden></p>
 
         <figure class="panel chart-panel">
-          <figcaption class="chart-title">401(k) balance by age</figcaption>
+          <figcaption class="chart-title">401(k) balance by age <button type="button" class="info" popovertarget="tip-coastpath" aria-label="About the coast-path line">i</button></figcaption>
           <div class="chart-wrap">
             <canvas id="chart" role="img" aria-label="Chart of projected 401(k) balance by age"></canvas>
           </div>
@@ -277,6 +283,39 @@
         guarantees. Taxes are modeled as a single effective rate on withdrawals; fees and early-withdrawal penalties are not modeled. This is an educational tool, not financial advice.
       </p>
     </footer>
+
+    <div id="tip-coastfire" class="tip" popover>
+      <h2>CoastFIRE</h2>
+      <p>Your savings are already big enough that, with no more contributions, growth alone carries them to your full retirement number by your traditional retirement age. After that you only need to earn enough to cover your current expenses.</p>
+    </div>
+    <div id="tip-fire" class="tip" popover>
+      <h2>FIRE number</h2>
+      <p>The balance that can fund retirement: annual spending (grossed up for tax, less any Social Security or pension) divided by your safe withdrawal rate. Reach it and you can retire fully.</p>
+    </div>
+    <div id="tip-swr" class="tip" popover>
+      <h2>Safe withdrawal rate</h2>
+      <p>The share of your portfolio you withdraw in the first year of retirement, then adjust for inflation. 4% has historically lasted about 30 years; use a lower rate for a longer retirement.</p>
+    </div>
+    <div id="tip-return" class="tip" popover>
+      <h2>Real return</h2>
+      <p>Yearly growth after inflation. Real returns keep every figure in today's dollars. The presets are rough long-run averages, not promises.</p>
+    </div>
+    <div id="tip-tax" class="tip" popover>
+      <h2>Tax on withdrawals</h2>
+      <p>A single average rate applied to 401(k) withdrawals, since traditional 401(k) money is taxed as income. Spending is grossed up so you net the amount you entered. Use 0% for Roth money.</p>
+    </div>
+    <div id="tip-bridge" class="tip" popover>
+      <h2>Social Security bridge</h2>
+      <p>If you retire before Social Security or a pension starts, your 401(k) has to cover your full spending until it does. The calculator adds enough for those bridge years, then counts the benefit against spending afterward.</p>
+    </div>
+    <div id="tip-coastpath" class="tip" popover>
+      <h2>Contribute until coast, then stop</h2>
+      <p>The dotted line shows your balance if you keep contributing until your CoastFIRE age and then stop completely. It should reach your FIRE number by your traditional retirement age.</p>
+    </div>
+    <div id="tip-success" class="tip" popover>
+      <h2>Simulated chances</h2>
+      <p>These figures come from 1,000 simulated markets that share your expected return but bounce around from year to year. A chance is the share of simulations where the plan worked; 90% confidence is a safer bar than the single steady-returns line.</p>
+    </div>
   </main>
 </body>
 </html>
