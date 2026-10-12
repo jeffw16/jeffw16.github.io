@@ -535,6 +535,104 @@ test.describe("shareable links", () => {
   });
 });
 
+test.describe("tax rate estimate", () => {
+  const estimate = (page) => page.locator("#taxEstimateText");
+  const spendingBox = (page) => page.locator("#spending");
+
+  test("suggests a rate from spending without changing the field", async ({ page }) => {
+    await expect(estimate(page)).toContainText("Estimated 6.5% for single");
+    await expect(estimate(page)).toContainText("2025 federal rules");
+    await expect(page.locator("#taxRate")).toHaveValue("10");
+    await expect(card(page, "cardFire")).toHaveText("$1,111,111");
+  });
+
+  test("a higher-spending single filer gets a higher estimate", async ({ page }) => {
+    await spendingBox(page).fill("100000");
+    await expect(estimate(page)).toContainText("Estimated 14.3% for single");
+    await page.getByRole("button", { name: "Fine-tune" }).click();
+    await page.locator("#filingStatus").selectOption("married");
+    await expect(estimate(page)).toContainText("Estimated 7.7% for married filing jointly");
+  });
+
+  test("Use estimate fills the tax rate and recalculates the FIRE number", async ({ page }) => {
+    await spendingBox(page).fill("100000");
+    await page.getByRole("button", { name: "Use 14.3%" }).click();
+    await expect(page.locator("#taxRate")).toHaveValue("14.3");
+    const need100k = { ...need, spending: 100_000, taxRate: 0.143 };
+    await expect(card(page, "cardFire")).toHaveText(money(requiredBalance({ ...need100k, retireAge: 65 })));
+    await expect(page.getByRole("button", { name: /^Use / })).toBeHidden(); // already applied
+  });
+
+  test("Fine-tune opens a modal with the breakdown and live inputs", async ({ page }) => {
+    await spendingBox(page).fill("100000");
+    await page.getByRole("button", { name: "Fine-tune" }).click();
+    const dialog = page.getByRole("dialog", { name: "Estimate your tax rate" });
+    await expect(dialog).toBeVisible();
+    const row = (label) => dialog.locator("#taxRows > div", { hasText: label });
+    await expect(row("Standard deduction")).toContainText("$17,750");
+    await expect(row("Effective rate")).toContainText("14.3%");
+    await dialog.getByLabel("State income tax").fill("5");
+    await expect(row("State tax")).toBeVisible();
+    await expect(row("Effective rate")).toContainText("19.9%");
+    await dialog.getByLabel("Tax-free share of withdrawals").fill("100");
+    await expect(row("Effective rate")).toContainText("0.0%");
+  });
+
+  test("Use this rate applies the estimate and closes the modal", async ({ page }) => {
+    await spendingBox(page).fill("100000");
+    await page.getByRole("button", { name: "Fine-tune" }).click();
+    await page.getByLabel("Filing status").selectOption("married");
+    await page.getByRole("button", { name: "Use this rate" }).click();
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(page.locator("#taxRate")).toHaveValue("7.7");
+  });
+
+  test("Escape and Close dismiss the modal and return focus", async ({ page }) => {
+    const opener = page.getByRole("button", { name: "Fine-tune" });
+    await opener.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(opener).toBeFocused();
+    await opener.click();
+    await page.locator("#closeTax").click();
+    await expect(page.getByRole("dialog")).toBeHidden();
+  });
+
+  test("includes Social Security in the breakdown", async ({ page }) => {
+    await spendingBox(page).fill("100000");
+    await page.locator("#benefit").fill("30000");
+    await page.getByRole("button", { name: "Fine-tune" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator("#taxRows")).toContainText("Taxable Social Security");
+    await expect(dialog.locator("#taxModalNote")).toContainText("treated as Social Security");
+  });
+
+  test("filing status, state tax and tax-free share are remembered, shared and reset", async ({ page }) => {
+    await page.getByRole("button", { name: "Fine-tune" }).click();
+    await page.getByLabel("Filing status").selectOption("head");
+    await page.getByLabel("State income tax").fill("4");
+    await page.getByLabel("Tax-free share of withdrawals").fill("25");
+    await page.keyboard.press("Escape");
+    await page.reload();
+    await expect(page.locator("#filingStatus")).toHaveValue("head");
+    await expect(page.locator("#stateTax")).toHaveValue("4");
+    await expect.poll(() => page.url()).toMatch(/filingStatus=head.*stateTax=4|stateTax=4.*filingStatus=head/);
+    await page.locator("#reset").click();
+    await expect(page.locator("#filingStatus")).toHaveValue("single");
+    await expect(page.locator("#stateTax")).toHaveValue("0");
+    await expect(page.locator("#rothShare")).toHaveValue("0");
+  });
+
+  test("invalid fine-tune values are flagged and hide the estimate", async ({ page }) => {
+    await page.getByRole("button", { name: "Fine-tune" }).click();
+    await page.getByLabel("State income tax").fill("50");
+    await expect(page.locator("#stateTax")).toHaveAttribute("aria-invalid", "true");
+    await expect(estimate(page)).toBeEmpty();
+    await expect(page.getByRole("button", { name: "Use this rate" })).toBeDisabled();
+  });
+});
+
 test.describe("explanations", () => {
   const tip = (page, id) => page.locator(`#${id}`);
 

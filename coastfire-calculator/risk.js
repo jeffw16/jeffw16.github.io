@@ -1,8 +1,8 @@
 // "With market ups and downs": what the Monte Carlo paths say about a scenario.
 // computeRisk is pure; createRiskRunner adds a small cache of the (expensive)
 // random paths so editing contributions doesn't regenerate them.
-import { DEFAULT_MAX_AGE, contributionSchedule, coastPathSchedule } from "./calc.js?v=270c7a2de5";
-import { computeScenario } from "./scenario.js?v=270c7a2de5";
+import { DEFAULT_MAX_AGE, contributionSchedule, coastPathSchedule } from "./calc.js?v=1125c57851";
+import { computeScenario } from "./scenario.js?v=1125c57851";
 import {
   monthlyReturnPaths,
   balancePaths,
@@ -12,9 +12,9 @@ import {
   coastSuccessRate,
   coastConfidenceAge,
   contributionForConfidence,
-} from "./montecarlo.js?v=270c7a2de5";
-import { formatAge, formatAgeOrNote } from "./format.js?v=270c7a2de5";
-import { HISTORY, seriesFor, historicalPaths } from "./history.js?v=270c7a2de5";
+} from "./montecarlo.js?v=1125c57851";
+import { formatAge, formatAgeOrNote } from "./format.js?v=1125c57851";
+import { HISTORY, seriesFor, historicalPaths } from "./history.js?v=1125c57851";
 
 export const PATHS = 1000;
 export const SEED = 1;

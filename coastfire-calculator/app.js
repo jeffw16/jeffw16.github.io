@@ -10,18 +10,19 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=270c7a2de5";
+} from "./calc.js?v=1125c57851";
 import {
   requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   earlyAccessGuidance,
-} from "./retirement.js?v=270c7a2de5";
-import { IRS_LIMITS } from "./limits.js?v=270c7a2de5";
-import { computeScenario, sensitivity } from "./scenario.js?v=270c7a2de5";
-import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=270c7a2de5";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "./format.js?v=270c7a2de5";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=270c7a2de5";
+} from "./retirement.js?v=1125c57851";
+import { IRS_LIMITS } from "./limits.js?v=1125c57851";
+import { computeScenario, sensitivity } from "./scenario.js?v=1125c57851";
+import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=1125c57851";
+import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=1125c57851";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "./format.js?v=1125c57851";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=1125c57851";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -108,13 +109,13 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 // ---------- Saved values ----------
 
 // Form fields remembered in localStorage, by name.
-const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility"];
-const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], returnModel: ["fixed", "montecarlo", "historical"], portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
+const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility", "filingStatus", "stateTax", "rothShare"];
+const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], returnModel: ["fixed", "montecarlo", "historical"], filingStatus: FILING_STATUSES.map((s) => s.id), portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
 
 function defaultValueOf(name) {
   if (name === "mode" || name === "contributionUnit") return [...form.elements[name]].find((r) => r.defaultChecked).value;
   if (name === "portfolio") return DEFAULT_PORTFOLIO_ID;
-  if (name === "returnModel") return [...form.elements.returnModel.options].find((o) => o.defaultSelected).value;
+  if (form.elements[name] instanceof HTMLSelectElement) return [...form.elements[name].options].find((o) => o.defaultSelected).value;
   return form.elements[name].defaultValue;
 }
 
@@ -277,6 +278,8 @@ function validate(i) {
   check("spending", Number.isFinite(i.spending) && i.spending > 0, "Enter your expected annual spending in retirement.");
   check("swr", Number.isFinite(i.swr) && i.swr > 0, "Enter a withdrawal rate above 0%.");
   check("taxRate", Number.isFinite(i.taxRate) && i.taxRate >= 0 && i.taxRate < 1, "Enter a tax rate from 0% to 60%.");
+  check("stateTax", Number.isFinite(num("stateTax")) && num("stateTax") >= 0 && num("stateTax") <= 20, "Enter a state tax rate from 0% to 20%.");
+  check("rothShare", Number.isFinite(num("rothShare")) && num("rothShare") >= 0 && num("rothShare") <= 100, "Enter a tax-free share from 0% to 100%.");
   check("benefit", Number.isFinite(i.benefit) && i.benefit >= 0, "Enter a benefit of $0 or more per year.");
   check("benefitAge", Number.isFinite(i.benefitAge) && i.benefitAge >= 50 && i.benefitAge <= DEFAULT_MAX_AGE, "Benefit start age must be between 50 and 100.");
   const covered = benefitCoversSpending({ spending: i.spending, benefit: i.benefit, benefitAge: i.benefitAge, retireAge: i.retirementAge });
@@ -311,6 +314,98 @@ const cardAge = (age) => {
   return { value: big, unit };
 };
 
+// ---------- Tax estimate ----------
+
+const STATUS_LABEL = Object.fromEntries(FILING_STATUSES.map((s) => [s.id, s.label]));
+const ratePercent = (rate) => `${(rate * 100).toFixed(1)}%`;
+let taxEstimate = null;
+
+/** The estimated rate for the current retirement inputs, or null while they're incomplete. */
+function currentTaxEstimate(i) {
+  const stateRate = num("stateTax") / 100;
+  const taxFreeShare = num("rothShare") / 100;
+  if (!(i.spending > 0) || !Number.isFinite(i.benefit) || !(stateRate >= 0 && stateRate <= 0.2) || !(taxFreeShare >= 0 && taxFreeShare <= 1)) return null;
+  // The long stretch of retirement is after the benefit starts, so estimate that year; 65+ deduction applies by then.
+  const age = i.benefit > 0 ? Math.max(i.retirementAge, i.benefitAge) : i.retirementAge;
+  const over65 = age >= 65;
+  const status = $("filingStatus").value;
+  return { ...estimateRate({ spending: i.spending, benefit: i.benefit, status, over65, stateRate, taxFreeShare }), status, over65, stateRate, taxFreeShare };
+}
+
+function renderTax(i) {
+  taxEstimate = currentTaxEstimate(i);
+  const text = $("taxEstimateText");
+  const use = $("useTaxEstimate");
+  const apply = $("applyTax");
+  if (!taxEstimate) {
+    text.textContent = "";
+    use.hidden = true;
+    apply.disabled = true;
+    $("taxRows").replaceChildren();
+    return;
+  }
+  const { rate, status, stateRate } = taxEstimate;
+  const matches = Math.abs(rate * 100 - num("taxRate")) < 0.05;
+  const where = stateRate > 0 ? ` plus ${(stateRate * 100).toFixed(1).replace(/\.0$/, "")}% state tax` : "";
+  text.textContent = `Estimated ${ratePercent(rate)} for ${STATUS_LABEL[status].toLowerCase()}${where}, from your spending and ${TAX_YEAR} federal rules.`;
+  use.hidden = matches;
+  use.textContent = `Use ${ratePercent(rate)}`;
+  apply.disabled = matches;
+  apply.title = matches ? "This rate is already applied" : "";
+  if ($("taxDialog").open) fillTaxRows(i);
+}
+
+function fillTaxRows(i) {
+  const { breakdown: b, rate, over65, taxFreeShare } = taxEstimate;
+  const rows = [
+    ["Spending you want after tax", money.format(i.spending)],
+    ...(i.benefit > 0 ? [["Social Security / pension", money.format(i.benefit)]] : []),
+    ["401(k) withdrawal needed", money.format(b.withdrawal)],
+    ...(taxFreeShare > 0 ? [["Taxable part of withdrawal", money.format(b.taxableWithdrawal)]] : []),
+    ...(i.benefit > 0 ? [["Taxable Social Security", money.format(b.taxableBenefit)]] : []),
+    [`Standard deduction${over65 ? " (incl. age 65+)" : ""}`, money.format(b.deduction)],
+    ["Taxable income", money.format(b.taxableIncome)],
+    ["Federal tax", money.format(b.federal)],
+    ...(b.state > 0 ? [["State tax", money.format(b.state)]] : []),
+    ["Effective rate on withdrawals", ratePercent(rate)],
+  ];
+  $("taxRows").replaceChildren(...rows.map(([label, value], k) => {
+    const row = document.createElement("div");
+    if (k === rows.length - 1) row.className = "total";
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    row.append(dt, dd);
+    return row;
+  }));
+  $("taxModalIntro").textContent = `${TAX_YEAR} federal brackets and standard deduction, applied to the year after your benefit starts. Everything here is an estimate, not tax advice.`;
+  $("taxModalNote").textContent = i.benefit > 0
+    ? "Your benefit is treated as Social Security, so part of it can be taxable. A pension would be fully taxable."
+    : "";
+}
+
+function applyTaxEstimate() {
+  if (!taxEstimate) return;
+  const field = $("taxRate");
+  field.value = String(Math.round(taxEstimate.rate * 1000) / 10);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+$("useTaxEstimate").addEventListener("click", applyTaxEstimate);
+const taxDialog = $("taxDialog");
+if (typeof taxDialog.showModal === "function") {
+  $("openTaxModal").addEventListener("click", () => {
+    taxDialog.showModal();
+    fillTaxRows(readInputs());
+  });
+  $("applyTax").addEventListener("click", () => { applyTaxEstimate(); taxDialog.close(); });
+  for (const id of ["closeTax", "closeTaxX"]) $(id).addEventListener("click", () => taxDialog.close());
+  taxDialog.addEventListener("click", (e) => { if (e.target === taxDialog) taxDialog.close(); }); // click on the backdrop
+} else {
+  $("openTaxModal").hidden = true;
+}
+
 // ---------- Update ----------
 
 function update() {
@@ -320,6 +415,7 @@ function update() {
   $("reset").disabled = isDefaultState(values, DEFAULTS);
 
   const i = readInputs();
+  renderTax(i);
   const isTarget = i.mode === "target";
 
   document.querySelectorAll("[data-mode]").forEach((el) => { el.hidden = el.dataset.mode !== i.mode; });
@@ -485,7 +581,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=270c7a2de5", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=1125c57851", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;
