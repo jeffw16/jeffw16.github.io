@@ -1,6 +1,6 @@
 // Monte Carlo helpers: seeded random market paths and statistics over them.
 // All functions are pure; randomness only enters through an explicit seed.
-import { simulate, firstMonthAtOrAbove } from "./calc.js?v=b0f54e5bbd";
+import { simulate, firstMonthAtOrAbove } from "./calc.js?v=39091f289f";
 
 const EPSILON = 1e-9;
 

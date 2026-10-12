@@ -34,6 +34,17 @@ describe("index.html inputs (regression)", () => {
     }
   });
 
+  it("points every info button at an existing popover", () => {
+    const targets = [...html.matchAll(/popovertarget="([\w-]+)"/g)].map((m) => m[1]);
+    assert.ok(targets.length >= 8);
+    for (const id of targets) assert.match(html, new RegExp(`<div id="${id}" class="tip" popover>`), `no popover #${id}`);
+  });
+
+  it("labels every info button and gives every popover a heading", () => {
+    for (const [tag] of html.matchAll(/<button\b[^>]*popovertarget[^>]*>/g)) assert.match(tag, /aria-label="[^"]+"/, tag);
+    for (const [block] of html.matchAll(/<div id="tip-[\w-]+" class="tip" popover>[\s\S]*?<\/div>/g)) assert.match(block, /<h2>[^<]+<\/h2>\s*<p>[^<]+<\/p>/);
+  });
+
   it("has every element app.js looks up by id", () => {
     const ids = new Set([...app.matchAll(/\$\("([\w-]+)"\)/g)].map((m) => m[1]));
     for (const id of ids) assert.match(html, new RegExp(`\\bid="${id}"`), `index.html is missing #${id}`);

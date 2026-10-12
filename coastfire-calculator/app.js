@@ -10,18 +10,18 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=b0f54e5bbd";
+} from "./calc.js?v=39091f289f";
 import {
   requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   earlyAccessGuidance,
-} from "./retirement.js?v=b0f54e5bbd";
-import { IRS_LIMITS } from "./limits.js?v=b0f54e5bbd";
-import { computeScenario, sensitivity } from "./scenario.js?v=b0f54e5bbd";
-import { createRiskRunner, describeRisk } from "./risk.js?v=b0f54e5bbd";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "./format.js?v=b0f54e5bbd";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys } from "./persist.js?v=b0f54e5bbd";
+} from "./retirement.js?v=39091f289f";
+import { IRS_LIMITS } from "./limits.js?v=39091f289f";
+import { computeScenario, sensitivity } from "./scenario.js?v=39091f289f";
+import { createRiskRunner, describeRisk } from "./risk.js?v=39091f289f";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "./format.js?v=39091f289f";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=39091f289f";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -33,6 +33,9 @@ const moneyCompact2 = new Intl.NumberFormat("en-US", { style: "currency", curren
 const amountFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 
 let chart = null;
+// Saved inputs are only overwritten once the user edits something, so opening a
+// shared link doesn't replace the viewer's own remembered numbers.
+let persist = true;
 
 // ---------- Setup ----------
 
@@ -91,11 +94,13 @@ for (const radio of form.elements.contributionUnit) {
 
 $("reset").addEventListener("click", () => {
   applyFormValues(DEFAULTS);
+  persist = true;
   update();
 });
 
-form.addEventListener("input", update);
-form.addEventListener("change", update);
+const onEdit = () => { persist = true; update(); };
+form.addEventListener("input", onEdit);
+form.addEventListener("change", onEdit);
 form.addEventListener("submit", (e) => e.preventDefault());
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { chart?.destroy(); chart = null; update(); });
 
@@ -115,6 +120,12 @@ function defaultValueOf(name) {
 
 const DEFAULTS = Object.freeze(Object.fromEntries(FIELDS.map((n) => [n, defaultValueOf(n)])));
 
+// How each field's text is validated in a shared link.
+const KINDS = Object.fromEntries([
+  ...[...form.querySelectorAll("[data-amount]")].map((el) => [el.name, "amount"]),
+  ...[...form.querySelectorAll('input[type="number"]')].map((el) => [el.name, "number"]),
+]);
+
 function readFormValues() {
   return Object.fromEntries(FIELDS.map((n) => [n, form.elements[n].value]));
 }
@@ -128,6 +139,43 @@ function applyFormValues(values) {
 function loadSaved() {
   try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
 }
+
+// Keep the address bar in step with the inputs (only fields that differ from the defaults).
+let urlTimer = null;
+function scheduleUrlSync(values) {
+  clearTimeout(urlTimer);
+  urlTimer = setTimeout(() => {
+    try { history.replaceState(null, "", location.pathname + encodeQuery(values, DEFAULTS, KINDS) + location.hash); } catch { /* ignore */ }
+  }, 300);
+}
+
+function shareUrl(values) {
+  const url = new URL(location.href);
+  url.search = encodeQuery(values, DEFAULTS, KINDS);
+  url.hash = "";
+  return url.href;
+}
+
+function legacyCopy(text) {
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.cssText = "position:fixed;opacity:0";
+  document.body.append(area);
+  area.select();
+  try { return document.execCommand("copy"); } catch { return false; } finally { area.remove(); }
+}
+
+let copyTimer = null;
+$("copyLink").addEventListener("click", async () => {
+  const url = shareUrl(readFormValues());
+  let ok = true;
+  try { await navigator.clipboard.writeText(url); } catch { ok = legacyCopy(url); }
+  $("copyLink").textContent = ok ? "Copied ✓" : "Copy failed";
+  $("copyStatus").textContent = ok ? "Link copied" : "Couldn't copy the link";
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => { $("copyLink").textContent = "Copy link"; $("copyStatus").textContent = ""; }, 2000);
+});
 
 function saveValues(values) {
   try {
@@ -267,7 +315,8 @@ const cardAge = (age) => {
 
 function update() {
   const values = readFormValues();
-  saveValues(values);
+  if (persist) saveValues(values);
+  scheduleUrlSync(values);
   $("reset").disabled = isDefaultState(values, DEFAULTS);
 
   const i = readInputs();
@@ -435,7 +484,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=b0f54e5bbd", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=39091f289f", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;
@@ -625,9 +674,17 @@ function fillSensitivity(i, rows) {
 
 // ---------- Start ----------
 
-const saved = loadSaved();
-applyFormValues(parseSavedState(saved, DEFAULTS, ALLOWED));
-// Data saved before taxes/benefits existed holds a FIRE number that ignores them; re-derive it.
-if (saved !== null && !savedKeys(saved).includes("taxRate")) syncFire();
+// A link with parameters defines the whole scenario; otherwise use saved inputs, then defaults.
+const fromLink = decodeQuery(location.search, DEFAULTS, ALLOWED, KINDS);
+if (fromLink) {
+  persist = false;
+  applyFormValues(fromLink);
+  if (!new URLSearchParams(location.search).has("fire")) syncFire();
+} else {
+  const saved = loadSaved();
+  applyFormValues(parseSavedState(saved, DEFAULTS, ALLOWED));
+  // Data saved before taxes/benefits existed holds a FIRE number that ignores them; re-derive it.
+  if (saved !== null && !savedKeys(saved).includes("taxRate")) syncFire();
+}
 if (window.Chart) update();
 else window.addEventListener("load", update, { once: true });
