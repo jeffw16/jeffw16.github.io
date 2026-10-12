@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=01122d71ba">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" defer></script>
-  <script type="module" src="app.js?v=01122d71ba"></script>
+  <link rel="stylesheet" href="style.css?v=13182f91f0">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
+  <script type="module" src="app.js?v=13182f91f0"></script>
 </head>
 <body>
   <main class="page">
@@ -145,6 +145,7 @@
           <div class="chart-wrap">
             <canvas id="chart" role="img" aria-label="Chart of projected 401(k) balance by age"></canvas>
           </div>
+          <p id="chartError" class="hint" role="status" hidden>The chart couldn't load, but your results above and the table below still work.</p>
           <details class="table-view">
             <summary>Show as table</summary>
             <div class="table-scroll">
