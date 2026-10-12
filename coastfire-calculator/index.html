@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=1125c57851">
+  <link rel="stylesheet" href="style.css?v=f4edf72528">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=1125c57851"></script>
+  <script type="module" src="app.js?v=f4edf72528"></script>
 </head>
 <body>
   <main class="page">
@@ -152,6 +152,9 @@
               <input id="benefit" name="benefit" type="text" inputmode="decimal" autocomplete="off" data-amount value="0">
             </div>
             <p class="hint">In today's dollars. Reduces what the 401(k) must cover once it starts.</p>
+            <div class="tax-actions">
+              <button type="button" class="link-btn" id="openSsModal" aria-haspopup="dialog">Estimate Social Security…</button>
+            </div>
           </div>
 
           <div class="field">
@@ -241,6 +244,36 @@
           <div class="modal-actions">
             <button type="button" class="btn-primary" id="applyTax">Use this rate</button>
             <button type="button" class="reset" id="closeTax">Close</button>
+          </div>
+        </dialog>
+
+        <dialog id="ssDialog" class="modal" aria-labelledby="ssDialogTitle">
+          <div class="modal-head">
+            <h2 id="ssDialogTitle">Estimate Social Security</h2>
+            <button type="button" class="info" id="closeSsX" aria-label="Close">×</button>
+          </div>
+          <p class="hint" id="ssIntro"></p>
+
+          <div class="field">
+            <label for="ssEarnings">Typical yearly earnings</label>
+            <div class="affix" data-prefix="$">
+              <input id="ssEarnings" name="ssEarnings" type="text" inputmode="decimal" autocomplete="off" data-amount value="" placeholder="Your salary">
+            </div>
+            <p class="hint">In today's dollars, before tax. Leave blank to use the salary from Contributions.</p>
+          </div>
+
+          <div class="field">
+            <label for="ssStartAge">Age you started working</label>
+            <input id="ssStartAge" name="ssStartAge" type="number" inputmode="numeric" min="14" max="70" step="1" value="22">
+            <p class="hint">Years of earnings run from here to your retirement age.</p>
+          </div>
+
+          <dl class="tax-rows" id="ssRows"></dl>
+          <p class="hint" id="ssNote"></p>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-primary" id="applySs">Use this benefit</button>
+            <button type="button" class="reset" id="closeSs">Close</button>
           </div>
         </dialog>
 

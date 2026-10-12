@@ -26,8 +26,12 @@ benefit, filing status, state tax and tax-free (Roth) share, using the 2025 fede
 deduction (sources in `tax.js`), and "Fine-tune" opens a modal with the full breakdown. Capital gains rates,
 itemized deductions and state deductions are not modeled.
 
+The Social Security field can be filled by an "Estimate Social Security…" modal: your typical earnings, the age
+you started working and your claiming age go through the 2026 SSA benefit formula (sources in `socialsecurity.js`),
+counting zero-earning years if you retire before 35 years of work. It covers your own retirement benefit only.
+
 Code layout: pure, unit-tested modules (`calc.js`, `retirement.js`, `limits.js`, `scenario.js`,
-`montecarlo.js`, `history.js`, `tax.js`, `risk.js`, `format.js`, `persist.js`) and `app.js` for all DOM, storage and URL wiring; the
+`montecarlo.js`, `history.js`, `tax.js`, `socialsecurity.js`, `risk.js`, `format.js`, `persist.js`) and `app.js` for all DOM, storage and URL wiring; the
 Monte Carlo work runs in `mc-worker.js`.
 
 Run `npm install` once, then:

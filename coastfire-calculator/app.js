@@ -10,19 +10,20 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=1125c57851";
+} from "./calc.js?v=f4edf72528";
 import {
   requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   earlyAccessGuidance,
-} from "./retirement.js?v=1125c57851";
-import { IRS_LIMITS } from "./limits.js?v=1125c57851";
-import { computeScenario, sensitivity } from "./scenario.js?v=1125c57851";
-import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=1125c57851";
-import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=1125c57851";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "./format.js?v=1125c57851";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=1125c57851";
+} from "./retirement.js?v=f4edf72528";
+import { IRS_LIMITS } from "./limits.js?v=f4edf72528";
+import { computeScenario, sensitivity } from "./scenario.js?v=f4edf72528";
+import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=f4edf72528";
+import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=f4edf72528";
+import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=f4edf72528";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "./format.js?v=f4edf72528";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=f4edf72528";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -109,7 +110,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 // ---------- Saved values ----------
 
 // Form fields remembered in localStorage, by name.
-const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility", "filingStatus", "stateTax", "rothShare"];
+const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility", "filingStatus", "stateTax", "rothShare", "ssEarnings", "ssStartAge"];
 const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], returnModel: ["fixed", "montecarlo", "historical"], filingStatus: FILING_STATUSES.map((s) => s.id), portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
 
 function defaultValueOf(name) {
@@ -393,18 +394,72 @@ function applyTaxEstimate() {
 }
 
 $("useTaxEstimate").addEventListener("click", applyTaxEstimate);
-const taxDialog = $("taxDialog");
-if (typeof taxDialog.showModal === "function") {
-  $("openTaxModal").addEventListener("click", () => {
-    taxDialog.showModal();
-    fillTaxRows(readInputs());
-  });
-  $("applyTax").addEventListener("click", () => { applyTaxEstimate(); taxDialog.close(); });
-  for (const id of ["closeTax", "closeTaxX"]) $(id).addEventListener("click", () => taxDialog.close());
-  taxDialog.addEventListener("click", (e) => { if (e.target === taxDialog) taxDialog.close(); }); // click on the backdrop
-} else {
-  $("openTaxModal").hidden = true;
+
+/** Open `dialogId` from `openId`; `closeIds` close it, as do Escape and a click on the backdrop. Hides the opener without <dialog> support. */
+function wireDialog(dialogId, openId, closeIds, onOpen) {
+  const dialog = $(dialogId);
+  if (typeof dialog.showModal !== "function") { $(openId).hidden = true; return dialog; }
+  $(openId).addEventListener("click", () => { dialog.showModal(); onOpen(); });
+  for (const id of closeIds) $(id).addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); });
+  return dialog;
 }
+
+wireDialog("taxDialog", "openTaxModal", ["closeTax", "closeTaxX"], () => fillTaxRows(readInputs()));
+$("applyTax").addEventListener("click", () => { applyTaxEstimate(); $("taxDialog").close(); });
+
+// ---------- Social Security estimate ----------
+
+let ssEstimate = null;
+
+function renderSs(i) {
+  const dialog = $("ssDialog");
+  const earnings = Number.isFinite(num("ssEarnings")) && num("ssEarnings") > 0 ? num("ssEarnings") : num("salary");
+  ssEstimate = estimateBenefit({ annualEarnings: earnings, startAge: num("ssStartAge"), retirementAge: i.retirementAge, claimAge: i.benefitAge });
+  if (!dialog.open) return;
+  $("applySs").disabled = !ssEstimate || !ssEstimate.eligible;
+  $("ssIntro").textContent = `${SS_YEAR} Social Security formula for your own retirement benefit, in today's dollars. An estimate, not your actual record.`;
+  const rows = [];
+  let note = "";
+  if (!ssEstimate) {
+    note = !(i.benefitAge >= EARLIEST_AGE && i.benefitAge <= LATEST_AGE)
+      ? `Social Security can start between ${EARLIEST_AGE} and ${LATEST_AGE}. Change "Benefit starts at age" to estimate it.`
+      : "Enter your typical yearly earnings (or a salary under Contributions) and the age you started working.";
+  } else {
+    const e = ssEstimate;
+    rows.push(
+      [`Years of earnings (up to ${COUNTED_YEARS} count)`, String(e.years)],
+      ["Yearly earnings counted", money.format(e.countedEarnings)],
+      ["Average monthly earnings", money.format(e.aime)],
+      ["Monthly benefit at full retirement age (67)", money.format(e.pia)],
+      [`Adjustment for claiming at ${i.benefitAge}`, `${(e.factor * 100).toFixed(1)}%`],
+      ["Monthly benefit", money.format(e.monthly)],
+      ["Yearly benefit", money.format(e.annual)],
+    );
+    note = e.eligible
+      ? e.years < COUNTED_YEARS ? `Only ${e.years} years of earnings are counted; the other ${COUNTED_YEARS - e.years} of the ${COUNTED_YEARS} averaged are zeros, which lowers the benefit.` : ""
+      : `Social Security needs at least ${MIN_YEARS} years of earnings, so this plan wouldn't qualify.`;
+  }
+  $("ssRows").replaceChildren(...rows.map(([label, value], k) => {
+    const row = document.createElement("div");
+    if (k === rows.length - 1) row.className = "total";
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    row.append(dt, dd);
+    return row;
+  }));
+  $("ssNote").textContent = note + (note ? " " : "") + "Assumes steady earnings and a birth year of 1960 or later. Your statement at ssa.gov/myaccount is more accurate.";
+}
+
+wireDialog("ssDialog", "openSsModal", ["closeSs", "closeSsX"], () => renderSs(readInputs()));
+$("applySs").addEventListener("click", () => {
+  if (!ssEstimate?.eligible) return;
+  setAmount("benefit", ssEstimate.annual);
+  $("benefit").dispatchEvent(new Event("input", { bubbles: true }));
+  $("ssDialog").close();
+});
 
 // ---------- Update ----------
 
@@ -416,6 +471,7 @@ function update() {
 
   const i = readInputs();
   renderTax(i);
+  renderSs(i);
   const isTarget = i.mode === "target";
 
   document.querySelectorAll("[data-mode]").forEach((el) => { el.hidden = el.dataset.mode !== i.mode; });
@@ -581,7 +637,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=1125c57851", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=f4edf72528", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;

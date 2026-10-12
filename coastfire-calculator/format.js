@@ -1,6 +1,6 @@
 // Pure display helpers: comma-grouped dollar inputs and age labels. No DOM access.
 
-import { splitAge } from "./calc.js?v=1125c57851";
+import { splitAge } from "./calc.js?v=f4edf72528";
 
 /** Parse a user-typed amount like "1,234.5" or "$50,000" into a number (NaN if empty/invalid). */
 export function parseAmount(text) {
