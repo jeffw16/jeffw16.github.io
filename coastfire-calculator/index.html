@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=270c7a2de5">
+  <link rel="stylesheet" href="style.css?v=1125c57851">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=270c7a2de5"></script>
+  <script type="module" src="app.js?v=1125c57851"></script>
 </head>
 <body>
   <main class="page">
@@ -136,9 +136,14 @@
           <div class="field">
             <div class="label-row"><label for="taxRate">Effective tax rate on withdrawals</label><button type="button" class="info" popovertarget="tip-tax" aria-label="About the tax rate">i</button></div>
             <div class="affix" data-suffix="%">
-              <input id="taxRate" name="taxRate" type="number" inputmode="decimal" min="0" max="60" step="1" value="10">
+              <input id="taxRate" name="taxRate" type="number" inputmode="decimal" min="0" max="60" step="0.1" value="10">
             </div>
             <p class="hint">401(k) withdrawals are taxed as income. Use 0% if it's all Roth.</p>
+            <p class="hint tax-estimate" id="taxEstimateText" aria-live="polite"></p>
+            <div class="tax-actions">
+              <button type="button" class="link-btn" id="useTaxEstimate">Use estimate</button>
+              <button type="button" class="link-btn" id="openTaxModal" aria-haspopup="dialog">Fine-tune…</button>
+            </div>
           </div>
 
           <div class="field">
@@ -197,6 +202,47 @@
             <p class="hint">Typical yearly swing. The S&amp;P 500 is about 17%.</p>
           </div>
         </details>
+
+        <dialog id="taxDialog" class="modal" aria-labelledby="taxDialogTitle">
+          <div class="modal-head">
+            <h2 id="taxDialogTitle">Estimate your tax rate</h2>
+            <button type="button" class="info" id="closeTaxX" aria-label="Close">×</button>
+          </div>
+          <p class="hint" id="taxModalIntro"></p>
+
+          <div class="field">
+            <label for="filingStatus">Filing status</label>
+            <select id="filingStatus" name="filingStatus">
+              <option value="single" selected>Single</option>
+              <option value="married">Married filing jointly</option>
+              <option value="head">Head of household</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="stateTax">State income tax</label>
+            <div class="affix" data-suffix="%">
+              <input id="stateTax" name="stateTax" type="number" inputmode="decimal" min="0" max="20" step="0.1" value="0">
+            </div>
+            <p class="hint">A flat rate on taxable withdrawals. 0% in states with no income tax (TX, FL, WA, …).</p>
+          </div>
+
+          <div class="field">
+            <label for="rothShare">Tax-free share of withdrawals</label>
+            <div class="affix" data-suffix="%">
+              <input id="rothShare" name="rothShare" type="number" inputmode="decimal" min="0" max="100" step="1" value="0">
+            </div>
+            <p class="hint">The part that comes from Roth money or a taxable account's contributions, which isn't taxed.</p>
+          </div>
+
+          <dl class="tax-rows" id="taxRows"></dl>
+          <p class="hint" id="taxModalNote"></p>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-primary" id="applyTax">Use this rate</button>
+            <button type="button" class="reset" id="closeTax">Close</button>
+          </div>
+        </dialog>
 
         <div class="form-footer">
           <button type="button" id="reset" class="reset">Reset to defaults</button>
@@ -303,7 +349,7 @@
     </div>
     <div id="tip-tax" class="tip" popover>
       <h2>Tax on withdrawals</h2>
-      <p>A single average rate applied to 401(k) withdrawals, since traditional 401(k) money is taxed as income. Spending is grossed up so you net the amount you entered. Use 0% for Roth money.</p>
+      <p>A single average rate applied to 401(k) withdrawals, since traditional 401(k) money is taxed as income. Spending is grossed up so you net the amount you entered. Use 0% for Roth money. The estimate below the field uses the 2025 federal brackets and standard deduction; open Fine-tune to change the filing status, add state tax or a tax-free share.</p>
     </div>
     <div id="tip-bridge" class="tip" popover>
       <h2>Social Security bridge</h2>

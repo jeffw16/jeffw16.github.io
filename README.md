@@ -21,8 +21,13 @@ portfolio, starting in every year (later years wrap around to 1928) — with the
 (NYU/Damodaran returns, BLS CPI-U via FRED, December-to-December) are listed in `history.js`. Early-withdrawal
 penalties are not modeled.
 
+The tax-rate field is a plain number (10% by default); below it the calculator estimates a rate from your spending,
+benefit, filing status, state tax and tax-free (Roth) share, using the 2025 federal brackets and standard
+deduction (sources in `tax.js`), and "Fine-tune" opens a modal with the full breakdown. Capital gains rates,
+itemized deductions and state deductions are not modeled.
+
 Code layout: pure, unit-tested modules (`calc.js`, `retirement.js`, `limits.js`, `scenario.js`,
-`montecarlo.js`, `history.js`, `risk.js`, `format.js`, `persist.js`) and `app.js` for all DOM, storage and URL wiring; the
+`montecarlo.js`, `history.js`, `tax.js`, `risk.js`, `format.js`, `persist.js`) and `app.js` for all DOM, storage and URL wiring; the
 Monte Carlo work runs in `mc-worker.js`.
 
 Run `npm install` once, then:
