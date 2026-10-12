@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { computeRisk, createRiskRunner, PATHS, SEED, CONFIDENCE } from "../coastfire-calculator/risk.js";
+import { computeRisk, createRiskRunner, describeRisk, riskTitle, HISTORY_SPAN, PATHS, SEED, CONFIDENCE } from "../coastfire-calculator/risk.js";
 import { computeScenario } from "../coastfire-calculator/scenario.js";
 import { monthlyReturnPaths } from "../coastfire-calculator/montecarlo.js";
 import { requiredBalance } from "../coastfire-calculator/retirement.js";
@@ -101,7 +101,6 @@ describe("createRiskRunner", () => {
   });
 });
 
-import { describeRisk } from "../coastfire-calculator/risk.js";
 
 describe("describeRisk", () => {
   const run = (input) => describeRisk(input, computeScenario(input), createRiskRunner()(input));
@@ -139,5 +138,45 @@ describe("describeRisk", () => {
   it("describes target mode in percent of salary", () => {
     const { rows } = run({ ...base, mode: "target", contributionUnit: "pct", salary: 120_000 });
     assert.match(rows[0].value, /^[\d.]+% of salary$/);
+  });
+});
+
+describe("historical replay", () => {
+  const historical = { ...base, returnModel: "historical", portfolio: "sp500", annualReturn: 0.07 };
+  const run = createRiskRunner();
+  const risk = run(historical);
+  it("uses one path per start year and names the worst one", () => {
+    assert.ok(HISTORY_SPAN.firstYear === 1928 && HISTORY_SPAN.lastYear === 2025);
+    assert.equal(risk.band.p50.length, 71);
+    // Retiring at 65 after starting in 1928-1943 only; the worst start for a 35-year plan is a bad stretch.
+    assert.ok(Number.isInteger(risk.worstStartYear) && risk.worstStartYear >= 1928 && risk.worstStartYear <= 2025);
+    assert.ok(risk.band.p10[35] <= risk.band.p50[35] && risk.band.p50[35] <= risk.band.p90[35]);
+  });
+  it("is deterministic and reuses its paths across contribution changes", () => {
+    assert.deepEqual(run(historical), risk);
+    const more = run({ ...historical, contribution: 900 });
+    assert.equal(more.worstStartYear, risk.worstStartYear);
+    assert.ok(more.band.p50[35] > risk.band.p50[35]);
+  });
+  it("changes with the portfolio", () => {
+    const bonds = run({ ...historical, portfolio: "conservative-40-60" });
+    assert.ok(bonds.band.p90[35] < risk.band.p90[35]);
+  });
+  it("describes the historical card", () => {
+    const scenario = computeScenario(historical);
+    const { rows, hint } = describeRisk(historical, scenario, risk);
+    assert.ok(rows.length >= 2);
+    assert.match(hint, /from 1928/);
+    assert.match(hint, new RegExp(`worst start year for you was ${risk.worstStartYear}`));
+    assert.doesNotMatch(hint, /volatility/);
+  });
+  it("titles the card by model", () => {
+    assert.equal(riskTitle("historical"), "Across historical markets (1928\u20132025)");
+    assert.equal(riskTitle("montecarlo"), "With market ups and downs");
+  });
+  it("works in target mode too", () => {
+    const target = run({ ...historical, mode: "target" });
+    assert.ok(Number.isInteger(target.worstStartYear));
+    assert.ok(target.amountForConfidence === null || target.amountForConfidence >= 0);
   });
 });

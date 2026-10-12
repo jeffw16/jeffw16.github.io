@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=39091f289f">
+  <link rel="stylesheet" href="style.css?v=270c7a2de5">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=39091f289f"></script>
+  <script type="module" src="app.js?v=270c7a2de5"></script>
 </head>
 <body>
   <main class="page">
@@ -177,8 +177,9 @@
             <select id="returnModel" name="returnModel">
               <option value="fixed" selected>Steady (same every year)</option>
               <option value="montecarlo">Simulated ups and downs</option>
+              <option value="historical">Replay history (1928–2025)</option>
             </select>
-            <p class="hint">Monte Carlo simulation adds a likely range to the chart and chances of success.</p>
+            <p class="hint">Simulated ups and downs or real history add a likely range to the chart and chances of success.</p>
           </div>
 
           <div class="field" id="customReturnField" hidden>
@@ -236,7 +237,7 @@
 
         <article class="card card-wide" id="cardRisk" aria-live="polite" hidden>
             <button type="button" class="info info-corner" popovertarget="tip-success" aria-label="About the simulated chances">i</button>
-          <h2 class="card-label">With market ups and downs</h2>
+          <h2 class="card-label" id="riskTitle">With market ups and downs</h2>
           <dl class="risk-list" id="riskList"></dl>
           <p class="card-sub" id="riskHint"></p>
         </article>
@@ -314,7 +315,7 @@
     </div>
     <div id="tip-success" class="tip" popover>
       <h2>Simulated chances</h2>
-      <p>These figures come from 1,000 simulated markets that share your expected return but bounce around from year to year. A chance is the share of simulations where the plan worked; 90% confidence is a safer bar than the single steady-returns line.</p>
+      <p>These figures come from 1,000 simulated markets that share your expected return but bounce around from year to year, or from replaying every starting year of US stock and bond history since 1928. A chance is the share of those markets where the plan worked; 90% confidence is a safer bar than the single steady-returns line.</p>
     </div>
   </main>
 </body>

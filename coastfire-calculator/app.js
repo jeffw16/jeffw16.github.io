@@ -10,18 +10,18 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=39091f289f";
+} from "./calc.js?v=270c7a2de5";
 import {
   requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   earlyAccessGuidance,
-} from "./retirement.js?v=39091f289f";
-import { IRS_LIMITS } from "./limits.js?v=39091f289f";
-import { computeScenario, sensitivity } from "./scenario.js?v=39091f289f";
-import { createRiskRunner, describeRisk } from "./risk.js?v=39091f289f";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "./format.js?v=39091f289f";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=39091f289f";
+} from "./retirement.js?v=270c7a2de5";
+import { IRS_LIMITS } from "./limits.js?v=270c7a2de5";
+import { computeScenario, sensitivity } from "./scenario.js?v=270c7a2de5";
+import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=270c7a2de5";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "./format.js?v=270c7a2de5";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=270c7a2de5";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -109,7 +109,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 
 // Form fields remembered in localStorage, by name.
 const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility"];
-const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], returnModel: ["fixed", "montecarlo"], portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
+const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], returnModel: ["fixed", "montecarlo", "historical"], portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
 
 function defaultValueOf(name) {
   if (name === "mode" || name === "contributionUnit") return [...form.elements[name]].find((r) => r.defaultChecked).value;
@@ -323,10 +323,11 @@ function update() {
   const isTarget = i.mode === "target";
 
   document.querySelectorAll("[data-mode]").forEach((el) => { el.hidden = el.dataset.mode !== i.mode; });
-  const simulated = i.returnModel === "montecarlo";
+  const simulated = i.returnModel !== "fixed";
   $("customReturnField").hidden = i.portfolio !== "custom";
-  $("customVolatilityField").hidden = !(simulated && i.portfolio === "custom");
+  $("customVolatilityField").hidden = !(i.returnModel === "montecarlo" && i.portfolio === "custom");
   $("cardRisk").hidden = !simulated;
+  $("riskTitle").textContent = riskTitle(i.returnModel);
   $("portfolioNote").textContent = PORTFOLIOS.find((p) => p.id === i.portfolio)?.note ?? "Enter your own expected real (after-inflation) return.";
 
   const pctUnit = i.contributionUnit === "pct";
@@ -484,7 +485,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=39091f289f", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=270c7a2de5", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;

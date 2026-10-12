@@ -1,8 +1,8 @@
 // "With market ups and downs": what the Monte Carlo paths say about a scenario.
 // computeRisk is pure; createRiskRunner adds a small cache of the (expensive)
 // random paths so editing contributions doesn't regenerate them.
-import { DEFAULT_MAX_AGE, contributionSchedule, coastPathSchedule } from "./calc.js?v=39091f289f";
-import { computeScenario } from "./scenario.js?v=39091f289f";
+import { DEFAULT_MAX_AGE, contributionSchedule, coastPathSchedule } from "./calc.js?v=270c7a2de5";
+import { computeScenario } from "./scenario.js?v=270c7a2de5";
 import {
   monthlyReturnPaths,
   balancePaths,
@@ -12,8 +12,9 @@ import {
   coastSuccessRate,
   coastConfidenceAge,
   contributionForConfidence,
-} from "./montecarlo.js?v=39091f289f";
-import { formatAge, formatAgeOrNote } from "./format.js?v=39091f289f";
+} from "./montecarlo.js?v=270c7a2de5";
+import { formatAge, formatAgeOrNote } from "./format.js?v=270c7a2de5";
+import { HISTORY, seriesFor, historicalPaths } from "./history.js?v=270c7a2de5";
 
 export const PATHS = 1000;
 export const SEED = 1;
@@ -25,13 +26,23 @@ export const CONFIDENCE = 0.9;
  * chance that stopping at the coast age still works, and the earliest stop age
  * with `confidence`. Target mode: the contribution for `confidence` and the
  * chance the deterministic contribution works. `band` is the yearly 10/50/90th
- * percentile of the contributed balance, from the current age.
+ * percentile of the contributed balance, from the current age. With `startYears`
+ * (one per path, for historical replays) it also names the `worstStartYear`: the
+ * path with the lowest balance at the retirement (or target) age.
  */
-export function computeRisk(i, scenario, returnPaths, { confidence = CONFIDENCE } = {}) {
+export function computeRisk(i, scenario, returnPaths, { confidence = CONFIDENCE, startYears = null } = {}) {
   const { schedule, requiredAt, fire, isTarget, coastMonth } = scenario;
   const paths = balancePaths({ returnPaths, balance: i.balance, contributions: schedule.total });
   const [p10, p50, p90] = percentilesByYear(paths, [0.1, 0.5, 0.9]);
   const result = { confidence, band: { p10, p50, p90 }, fireAges: fireAgeDistribution(paths, requiredAt, i.age) };
+  if (startYears) {
+    const horizon = Math.round(((isTarget ? i.targetAge : i.retirementAge) - i.age) * 12);
+    let worst = 0;
+    paths.forEach((path, k) => {
+      if (path[Math.min(horizon, path.length - 1)] < paths[worst][Math.min(horizon, paths[worst].length - 1)]) worst = k;
+    });
+    result.worstStartYear = startYears[worst];
+  }
 
   if (isTarget) {
     const months = Math.round((i.targetAge - i.age) * 12);
@@ -53,22 +64,42 @@ export function computeRisk(i, scenario, returnPaths, { confidence = CONFIDENCE 
 
 /**
  * A function (inputs) => risk results (or { unreachable: true }) that keeps the
- * last set of random paths for reuse while the return assumptions are unchanged.
+ * last set of paths (random, or replayed history) for reuse while the return
+ * assumptions are unchanged.
  */
 export function createRiskRunner() {
   let key = null;
   let returnPaths = null;
+  let startYears = null;
   return (i) => {
     const scenario = computeScenario(i);
     if (scenario.unreachable) return { unreachable: true };
     const months = Math.round((DEFAULT_MAX_AGE - i.age) * 12);
-    const nextKey = [i.annualReturn, i.volatility, months].join("|");
+    const historical = i.returnModel === "historical";
+    const nextKey = historical
+      ? ["historical", i.portfolio, i.portfolio === "custom" ? i.annualReturn : "", months].join("|")
+      : ["montecarlo", i.annualReturn, i.volatility, months].join("|");
     if (nextKey !== key) {
-      returnPaths = monthlyReturnPaths({ paths: PATHS, seed: SEED, months, annualReturn: i.annualReturn, volatility: i.volatility });
+      if (historical) {
+        ({ paths: returnPaths, startYears } = historicalPaths({ series: seriesFor(i.portfolio, i.annualReturn), months }));
+      } else {
+        returnPaths = monthlyReturnPaths({ paths: PATHS, seed: SEED, months, annualReturn: i.annualReturn, volatility: i.volatility });
+        startYears = null;
+      }
       key = nextKey;
     }
-    return computeRisk(i, scenario, returnPaths);
+    return computeRisk(i, scenario, returnPaths, { startYears });
   };
+}
+
+/** Years covered by the historical data, e.g. { firstYear: 1928, lastYear: 2025 }. */
+export const HISTORY_SPAN = Object.freeze({ firstYear: HISTORY[0].year, lastYear: HISTORY[HISTORY.length - 1].year });
+
+/** Heading for the risk card. */
+export function riskTitle(returnModel) {
+  return returnModel === "historical"
+    ? `Across historical markets (${HISTORY_SPAN.firstYear}\u2013${HISTORY_SPAN.lastYear})`
+    : "With market ups and downs";
 }
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -82,7 +113,12 @@ const percent = (x) => `${Math.round(x * 100)}%`;
 export function describeRisk(i, scenario, risk) {
   const confidence = percent(risk.confidence);
   const amountText = (amount) => (i.contributionUnit === "pct" ? `${decimal.format(amount)}% of salary` : `${usd.format(amount)}/mo`);
-  const volatilityNote = `Based on ${PATHS.toLocaleString("en-US")} simulated markets with ${percent(i.volatility)} yearly volatility.`;
+  const historical = i.returnModel === "historical";
+  const volatilityNote = historical
+    ? `Replays real returns starting in each of the ${HISTORY.length} years from ${HISTORY_SPAN.firstYear}; later years wrap around to ${HISTORY_SPAN.firstYear}. ` +
+      `The worst start year for you was ${risk.worstStartYear}.`
+    : `Based on ${PATHS.toLocaleString("en-US")} simulated markets with ${percent(i.volatility)} yearly volatility.`;
+  const edgeNote = " Coasting exactly on the line works only about half the time — markets don't move in straight lines.";
 
   if (scenario.isTarget) {
     return {
@@ -94,7 +130,7 @@ export function describeRisk(i, scenario, risk) {
         },
         { label: `Chance of reaching your FIRE number by ${i.targetAge} with ${amountText(scenario.amount)}`, value: percent(risk.chanceAtSolved) },
       ],
-      hint: `${volatilityNote} The steady-returns answer works only about half the time — markets don't move in straight lines.`,
+      hint: historical ? volatilityNote : `${volatilityNote} The steady-returns answer works only about half the time — markets don't move in straight lines.`,
     };
   }
 
@@ -114,8 +150,6 @@ export function describeRisk(i, scenario, risk) {
     });
   }
   rows.push({ label: `Stop contributing with ${confidence} confidence`, value: formatAgeOrNote(risk.coastConfidenceAge, `Not by ${i.retirementAge}`) });
-  const edge = !scenario.alreadyCoast && scenario.coastAge !== null
-    ? " Coasting exactly on the line works only about half the time — markets don't move in straight lines."
-    : "";
+  const edge = !historical && !scenario.alreadyCoast && scenario.coastAge !== null ? edgeNote : "";
   return { rows, hint: volatilityNote + edge };
 }
