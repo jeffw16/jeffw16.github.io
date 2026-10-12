@@ -4,22 +4,24 @@ import {
   DEFAULT_PORTFOLIO_ID,
   DEFAULT_MAX_AGE,
   resolveReturn,
+  resolveVolatility,
   convertContribution,
   DEFAULT_CONTRIBUTION,
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=31c6da205c";
+} from "./calc.js?v=b0f54e5bbd";
 import {
   requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   earlyAccessGuidance,
-} from "./retirement.js?v=31c6da205c";
-import { IRS_LIMITS } from "./limits.js?v=31c6da205c";
-import { computeScenario, sensitivity } from "./scenario.js?v=31c6da205c";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "./format.js?v=31c6da205c";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys } from "./persist.js?v=31c6da205c";
+} from "./retirement.js?v=b0f54e5bbd";
+import { IRS_LIMITS } from "./limits.js?v=b0f54e5bbd";
+import { computeScenario, sensitivity } from "./scenario.js?v=b0f54e5bbd";
+import { createRiskRunner, describeRisk } from "./risk.js?v=b0f54e5bbd";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "./format.js?v=b0f54e5bbd";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys } from "./persist.js?v=b0f54e5bbd";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -65,7 +67,7 @@ for (const el of form.querySelectorAll("[data-amount]")) {
 // calculation uses; editing it directly back-fills spending. Everything that
 // changes the amount needed at the traditional retirement age re-derives it.
 const setAmount = (id, value) => { if (Number.isFinite(value)) $(id).value = groupDigits(String(Math.round(value))); };
-const FIRE_DRIVERS = ["spending", "swr", "taxRate", "benefit", "benefitAge", "retirementAge", "portfolio", "customReturn"];
+const FIRE_DRIVERS = ["spending", "swr", "taxRate", "benefit", "benefitAge", "retirementAge", "portfolio", "returnModel", "customReturn", "customVolatility"];
 for (const id of FIRE_DRIVERS) {
   $(id).addEventListener("input", syncFire);
   $(id).addEventListener("change", syncFire);
@@ -101,12 +103,13 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 // ---------- Saved values ----------
 
 // Form fields remembered in localStorage, by name.
-const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "customReturn"];
-const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
+const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility"];
+const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], returnModel: ["fixed", "montecarlo"], portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
 
 function defaultValueOf(name) {
   if (name === "mode" || name === "contributionUnit") return [...form.elements[name]].find((r) => r.defaultChecked).value;
   if (name === "portfolio") return DEFAULT_PORTFOLIO_ID;
+  if (name === "returnModel") return [...form.elements.returnModel.options].find((o) => o.defaultSelected).value;
   return form.elements[name].defaultValue;
 }
 
@@ -196,6 +199,8 @@ function readInputs() {
     fire: num("fire"),
     portfolio,
     annualReturn: resolveReturn(portfolio, num("customReturn") / 100),
+    returnModel: $("returnModel").value,
+    volatility: resolveVolatility(portfolio, num("customVolatility") / 100),
   };
 }
 
@@ -231,6 +236,8 @@ function validate(i) {
   check("fire", Number.isFinite(i.fire) && (covered ? i.fire >= 0 : i.fire > 0), "Enter a FIRE number above $0.");
   check("customReturn", i.portfolio !== "custom" || (Number.isFinite(num("customReturn")) && num("customReturn") > -100),
     "Enter a custom annual return.");
+  check("customVolatility", i.portfolio !== "custom" || (num("customVolatility") >= 0 && num("customVolatility") <= 60),
+    "Enter a yearly volatility from 0% to 60%.");
   return problems;
 }
 
@@ -267,7 +274,10 @@ function update() {
   const isTarget = i.mode === "target";
 
   document.querySelectorAll("[data-mode]").forEach((el) => { el.hidden = el.dataset.mode !== i.mode; });
+  const simulated = i.returnModel === "montecarlo";
   $("customReturnField").hidden = i.portfolio !== "custom";
+  $("customVolatilityField").hidden = !(simulated && i.portfolio === "custom");
+  $("cardRisk").hidden = !simulated;
   $("portfolioNote").textContent = PORTFOLIOS.find((p) => p.id === i.portfolio)?.note ?? "Enter your own expected real (after-inflation) return.";
 
   const pctUnit = i.contributionUnit === "pct";
@@ -280,12 +290,13 @@ function update() {
   const problems = validate(i);
   $("error").hidden = problems.length === 0;
   $("error").textContent = problems[0] ?? "";
-  if (problems.length) return;
+  if (problems.length) { cancelRisk(); return; }
 
   const scenario = computeScenario(i);
   if (scenario.unreachable) {
     $("error").hidden = false;
     $("error").textContent = "That target can't be reached with these assumptions.";
+    cancelRisk();
     return;
   }
   const { fire, requiredAt, coastNow, alreadyCoast, amount, schedule, monthlyContribution, matchMonthly, params, coastAge, fireAge, coastMonth, over } = scenario;
@@ -355,9 +366,12 @@ function update() {
   const milestones = [];
   if (!alreadyCoast && coastAge !== null) milestones.push({ x: coastAge, label: "Coast" });
   if (fireAge !== null) milestones.push({ x: fireAge, label: "FIRE" });
-  drawChart(series, milestones);
+  chartContext = { series, milestones, scenario, inputs: i };
+  drawChart(series, milestones, simulated ? lastBand : null);
   fillTable(series);
   fillSensitivity(i, sensitivity(i));
+  if (simulated) requestRisk(i);
+  else cancelRisk();
 }
 
 const EARLY_NOTES = {
@@ -379,6 +393,73 @@ function summaryHtml(s) {
       ? ` You can already fully retire.`
       : ` Keep contributing and you can fully retire at ${b(formatAge(s.fireAge))}.`;
   return coast + full;
+}
+
+// ---------- Simulated ups and downs ----------
+
+// The simulation runs in a worker (about 50-100 ms of work), debounced while the
+// user types. If workers aren't available it runs on the main thread instead.
+let chartContext = null;   // what the chart was last drawn from
+let lastBand = null;       // last percentile band, kept while a new one computes
+let riskSeq = 0;
+let riskTimer = null;
+let riskWorker = null;
+let workerFailed = false;
+let syncRunner = null;
+
+function cancelRisk() {
+  clearTimeout(riskTimer);
+  riskSeq++;
+  lastBand = null;
+  $("cardRisk").classList.remove("is-busy");
+}
+
+function requestRisk(inputs) {
+  clearTimeout(riskTimer);
+  const id = ++riskSeq;
+  $("cardRisk").classList.add("is-busy");
+  riskTimer = setTimeout(() => dispatchRisk(id, inputs), 150);
+}
+
+function dispatchRisk(id, inputs) {
+  const worker = getWorker(id, inputs);
+  if (worker) {
+    worker.postMessage({ id, inputs });
+    return;
+  }
+  syncRunner ??= createRiskRunner();
+  applyRisk(id, syncRunner(inputs), inputs);
+}
+
+function getWorker(id, inputs) {
+  if (workerFailed) return null;
+  if (riskWorker) return riskWorker;
+  try {
+    riskWorker = new Worker(new URL("./mc-worker.js?v=b0f54e5bbd", import.meta.url), { type: "module" });
+    riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
+    riskWorker.onerror = () => {
+      workerFailed = true;
+      riskWorker = null;
+      dispatchRisk(riskSeq, chartContext?.inputs ?? inputs);
+    };
+  } catch {
+    workerFailed = true;
+    return null;
+  }
+  return riskWorker;
+}
+
+function applyRisk(id, risk, inputs) {
+  if (id !== riskSeq || !chartContext || risk.unreachable) return; // a newer request superseded this one
+  $("cardRisk").classList.remove("is-busy");
+  const { rows, hint } = describeRisk(inputs, chartContext.scenario, risk);
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  $("riskList").innerHTML = rows
+    .map((r) => `<div><dt>${esc(r.label)}</dt><dd>${esc(r.value)}</dd>${r.note ? `<p class="risk-note">${esc(r.note)}</p>` : ""}</div>`)
+    .join("");
+  $("riskHint").textContent = hint;
+  lastBand = risk.band;
+  drawChart(chartContext.series, chartContext.milestones, lastBand);
 }
 
 // ---------- Chart ----------
@@ -413,26 +494,44 @@ const milestonePlugin = {
   },
 };
 
-const LEGEND_RANK = [0, 2, 1, 3];
+// Legend order (dataset order differs: see the comment in drawChart).
+const LEGEND_ORDER = [
+  "With monthly contributions",
+  "With contributions (median)",
+  "Current balance only",
+  "Contribute until coast, then stop",
+  "CoastFIRE target",
+  "Likely range (10th–90th percentile)",
+];
 
-function drawChart(series, milestones) {
+function drawChart(series, milestones, band = null) {
   $("chartError").hidden = !!window.Chart;
   document.querySelector(".chart-wrap").hidden = !window.Chart;
   if (!window.Chart) return;
   const toPoints = (ys) => series.ages.map((x, k) => ({ x, y: ys[k] }));
   const hasPath = Boolean(series.coastPath);
+  const n = series.ages.length;
+  // With simulated returns the contribution line is the median path, with a band around it.
+  const contribLine = band ? band.p50.slice(0, n) : series.withContrib;
   // Chart.js draws the first dataset on top, so the coast path comes before the
   // current-balance line (they coincide once you've already coasted); the
   // legend sort below puts it after.
   const datasets = [
-    { label: "With monthly contributions", data: toPoints(series.withContrib), borderColor: cssVar("--series-contrib") },
+    { label: band ? "With contributions (median)" : "With monthly contributions", data: toPoints(contribLine), borderColor: cssVar("--series-contrib") },
     { label: "Contribute until coast, then stop", data: hasPath ? toPoints(series.coastPath) : [], borderColor: cssVar("--series-coastpath"), borderDash: [2, 4], borderWidth: 3, borderCapStyle: "round" },
     { label: "Current balance only", data: toPoints(series.noContrib), borderColor: cssVar("--series-current") },
     { label: "CoastFIRE target", data: toPoints(series.coastTarget), borderColor: cssVar("--series-coast"), borderDash: [6, 4] },
-  ].map((d) => ({ borderWidth: 2, ...d, backgroundColor: d.borderColor, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderWidth: 2, pointHoverBorderColor: cssVar("--surface"), tension: 0 }));
+    // Band: the 90th percentile fills down to the 10th (the next dataset). Drawn last, so under the lines.
+    { label: "Likely range (10th–90th percentile)", tooltipLabel: "90th percentile", data: band ? toPoints(band.p90.slice(0, n)) : [], borderColor: "transparent", backgroundColor: cssVar("--band"), fill: "+1", borderWidth: 0 },
+    { label: "10th percentile", tooltipLabel: "10th percentile", data: band ? toPoints(band.p10.slice(0, n)) : [], borderColor: "transparent", backgroundColor: "transparent", fill: false, borderWidth: 0 },
+  ].map((d) => ({ borderWidth: 2, backgroundColor: d.borderColor, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderWidth: 2, pointHoverBorderColor: cssVar("--surface"), tension: 0, ...d }));
+
+  // The 90th percentile can dwarf everything else; cap the axis near the main lines (the band is clipped).
+  const yMax = band ? 1.6 * Math.max(...contribLine, ...series.coastTarget, ...series.noContrib) : undefined;
 
   if (chart) {
-    chart.data.datasets.forEach((d, k) => { d.data = datasets[k].data; });
+    chart.options.scales.y.max = yMax;
+    chart.data.datasets.forEach((d, k) => { d.data = datasets[k].data; d.label = datasets[k].label; });
     chart.options.scales.x.max = series.ages.at(-1);
     chart.options.scales.x.min = series.ages[0];
     chart.options.plugins.milestones.items = milestones;
@@ -464,6 +563,7 @@ function drawChart(series, milestones) {
         },
         y: {
           beginAtZero: true,
+          max: yMax,
           ticks: { color: text2, callback: (v) => moneyCompact.format(v), maxTicksLimit: 6 },
           grid: { color: grid },
           border: { display: false },
@@ -476,9 +576,9 @@ function drawChart(series, milestones) {
           align: "start",
           labels: {
             color: cssVar("--text"), usePointStyle: true, pointStyle: "line", boxWidth: 24, padding: 16,
-            // Hide the coast-path entry when there is no path; list it after "Current balance only".
-            filter: (item, data) => data.datasets[item.datasetIndex].data.length > 0,
-            sort: (a, b) => LEGEND_RANK[a.datasetIndex] - LEGEND_RANK[b.datasetIndex],
+            // Hide entries with no data (no coast path, no band) and the band's lower edge.
+            filter: (item, data) => data.datasets[item.datasetIndex].data.length > 0 && item.text !== "10th percentile",
+            sort: (a, b) => LEGEND_ORDER.indexOf(a.text) - LEGEND_ORDER.indexOf(b.text),
           },
         },
         tooltip: {
@@ -491,7 +591,7 @@ function drawChart(series, milestones) {
           usePointStyle: true,
           callbacks: {
             title: (items) => `Age ${items[0].parsed.x}`,
-            label: (item) => ` ${item.dataset.label}: ${money.format(item.parsed.y)}`,
+            label: (item) => ` ${item.dataset.tooltipLabel ?? item.dataset.label}: ${money.format(item.parsed.y)}`,
             labelPointStyle: () => ({ pointStyle: "line", rotation: 0 }),
           },
         },

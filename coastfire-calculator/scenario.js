@@ -8,9 +8,9 @@ import {
   solveEmployeeAmount,
   findCoastAge,
   findFireAge,
-} from "./calc.js?v=31c6da205c";
-import { requiredBalanceFn } from "./retirement.js?v=31c6da205c";
-import { firstAgeOverLimit } from "./limits.js?v=31c6da205c";
+} from "./calc.js?v=b0f54e5bbd";
+import { requiredBalanceFn } from "./retirement.js?v=b0f54e5bbd";
+import { firstAgeOverLimit } from "./limits.js?v=b0f54e5bbd";
 
 /**
  * Everything the page shows for one set of inputs. `i` has the shape of the

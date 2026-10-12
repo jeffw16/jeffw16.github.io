@@ -4,6 +4,8 @@ import {
   PORTFOLIOS,
   DEFAULT_PORTFOLIO_ID,
   resolveReturn,
+  resolveVolatility,
+  DEFAULT_CUSTOM_VOLATILITY,
   monthlyRate,
   fireNumber,
   spendingFromFire,
@@ -68,6 +70,25 @@ describe("resolveReturn", () => {
     assert.equal(resolveReturn("custom", NaN), 0.07);
     assert.equal(resolveReturn("custom", undefined), 0.07);
     assert.equal(resolveReturn("nope"), 0.07);
+  });
+});
+
+describe("resolveVolatility", () => {
+  it("returns each preset's volatility, higher for more stock-heavy portfolios", () => {
+    for (const p of PORTFOLIOS) {
+      assert.equal(resolveVolatility(p.id), p.volatility);
+      assert.ok(p.volatility > 0 && p.volatility < 0.3);
+    }
+    assert.ok(resolveVolatility("sp500") > resolveVolatility("balanced-60-40"));
+    assert.ok(resolveVolatility("balanced-60-40") > resolveVolatility("conservative-40-60"));
+  });
+  it("uses the custom value for 'custom' and falls back when it isn't a number", () => {
+    assert.equal(resolveVolatility("custom", 0.2), 0.2);
+    assert.equal(resolveVolatility("custom", 0), 0);
+    assert.equal(resolveVolatility("custom", NaN), DEFAULT_CUSTOM_VOLATILITY);
+  });
+  it("falls back to the default portfolio's volatility for an unknown id", () => {
+    assert.equal(resolveVolatility("nope"), resolveVolatility("sp500"));
   });
 });
 

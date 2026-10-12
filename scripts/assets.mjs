@@ -13,8 +13,9 @@ const VERSION_SUFFIX = /\?v=[0-9a-f]+/g;
 // Local (relative, non-URL) asset references. Groups: 1 = text up to and
 // including the opening quote, 2 = path, 3 = existing version (if any).
 const HTML_REF = /(\b(?:href|src)=")(?![a-z]+:|\/\/)([\w./-]+\.(?:css|js))(?:\?v=([0-9a-f]+))?"/g;
-// Relative module specifiers in JS: `from "./x.js"`, `import "./x.js"`, `import("./x.js")`.
-const JS_REF = /((?:\bfrom\s*|\bimport\s*\(?\s*)")(\.{1,2}\/[\w./-]+\.js)(?:\?v=([0-9a-f]+))?"/g;
+// Relative module specifiers in JS: `from "./x.js"`, `import "./x.js"`, `import("./x.js")`,
+// and worker URLs: `new URL("./x.js", import.meta.url)`.
+const JS_REF = /((?:\bfrom\s*|\bimport\s*\(?\s*|\bnew\s+URL\(\s*)")(\.{1,2}\/[\w./-]+\.js)(?:\?v=([0-9a-f]+))?"/g;
 
 const refPattern = (fileName) => (fileName.endsWith(".html") ? HTML_REF : fileName.endsWith(".js") ? JS_REF : null);
 

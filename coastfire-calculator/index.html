@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=31c6da205c">
+  <link rel="stylesheet" href="style.css?v=b0f54e5bbd">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=31c6da205c"></script>
+  <script type="module" src="app.js?v=b0f54e5bbd"></script>
 </head>
 <body>
   <main class="page">
@@ -172,11 +172,28 @@
             <p class="hint" id="portfolioNote"></p>
           </div>
 
+          <div class="field">
+            <label for="returnModel">How returns behave</label>
+            <select id="returnModel" name="returnModel">
+              <option value="fixed" selected>Steady (same every year)</option>
+              <option value="montecarlo">Simulated ups and downs</option>
+            </select>
+            <p class="hint">Monte Carlo simulation adds a likely range to the chart and chances of success.</p>
+          </div>
+
           <div class="field" id="customReturnField" hidden>
             <label for="customReturn">Custom real annual return</label>
             <div class="affix" data-suffix="%">
               <input id="customReturn" name="customReturn" type="number" inputmode="decimal" min="-5" max="20" step="0.1" value="6.5">
             </div>
+          </div>
+
+          <div class="field" id="customVolatilityField" hidden>
+            <label for="customVolatility">Custom yearly volatility</label>
+            <div class="affix" data-suffix="%">
+              <input id="customVolatility" name="customVolatility" type="number" inputmode="decimal" min="0" max="60" step="1" value="15">
+            </div>
+            <p class="hint">Typical yearly swing. The S&amp;P 500 is about 17%.</p>
           </div>
         </details>
 
@@ -211,6 +228,12 @@
             <p class="card-sub"></p>
           </article>
         </div>
+
+        <article class="card card-wide" id="cardRisk" aria-live="polite" hidden>
+          <h2 class="card-label">With market ups and downs</h2>
+          <dl class="risk-list" id="riskList"></dl>
+          <p class="card-sub" id="riskHint"></p>
+        </article>
 
         <p id="summary" class="summary"></p>
         <p id="earlyNote" class="note" role="note" hidden></p>
