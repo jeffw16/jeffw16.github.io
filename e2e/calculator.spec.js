@@ -199,3 +199,68 @@ test("results and table still work when Chart.js fails to load", async ({ browse
   await expect(card(page, "cardFire")).toHaveText("$1,111,111");
   await context.close();
 });
+
+const unit = (page, value) => page.locator(`input[name="contributionUnit"][value="${value}"]`).check();
+
+test.describe("contributions", () => {
+  test("switching $ <-> % converts the amount using salary", async ({ page }) => {
+    await page.locator("#salary").fill("120,000");
+    await unit(page, "pct");
+    await expect(page.locator("#contribution")).toHaveValue("5");
+    await expect(page.locator("#contributionLabel")).toHaveText("Contribution (% of salary)");
+    await expect(page.locator("#contributionAffix")).toHaveAttribute("data-suffix", "%");
+    await unit(page, "usd");
+    await expect(page.locator("#contribution")).toHaveValue("500");
+    await expect(page.locator("#contributionAffix")).toHaveAttribute("data-prefix", "$");
+  });
+
+  test("percent without a salary asks for one", async ({ page }) => {
+    await unit(page, "pct");
+    await expect(page.locator("#error")).toContainText("annual salary");
+    await page.locator("#salary").fill("100,000");
+    await expect(page.locator("#error")).toBeHidden();
+  });
+
+  test("target mode shows the employer match and a lower employee amount", async ({ page }) => {
+    await page.locator('input[name="mode"][value="target"]').check();
+    const without = await card(page, "cardPrimary").innerText();
+    await page.locator("#salary").fill("120,000");
+    await page.locator("#matchRate").fill("100");
+    await page.locator("#matchCap").fill("5");
+    await expect(page.locator("#cardPrimary .card-sub")).toContainText("employer match");
+    const dollars = (text) => Number(text.match(/\$([\d,]+)/)[1].replace(/,/g, ""));
+    expect(dollars(await card(page, "cardPrimary").innerText())).toBeLessThan(dollars(without));
+  });
+
+  test("target mode solves in percent of salary", async ({ page }) => {
+    await page.locator('input[name="mode"][value="target"]').check();
+    await page.locator("#salary").fill("120,000");
+    await unit(page, "pct");
+    await expect(page.locator("#cardPrimary .card-label")).toHaveText("Contribution needed");
+    await expect(card(page, "cardPrimary")).toContainText(/\d+(\.\d+)?%/);
+  });
+
+  test("warns when contributions exceed the IRS limit, in both modes", async ({ page }) => {
+    const warning = page.locator("#limitWarning");
+    await expect(warning).toBeHidden();
+    await page.locator("#contribution").fill("3,000");
+    await expect(warning).toContainText("$24,500");
+    await page.locator("#contribution").fill("1,000");
+    await expect(warning).toBeHidden();
+
+    await page.locator('input[name="mode"][value="target"]').check();
+    await page.locator("#balance").fill("0");
+    await page.locator("#targetAge").fill("35");
+    await expect(warning).toBeVisible();
+    await page.locator("#targetAge").fill("55");
+    await expect(warning).toBeHidden();
+  });
+
+  test("raises are saved and reset", async ({ page }) => {
+    await page.locator("#raise").fill("3");
+    await page.reload();
+    await expect(page.locator("#raise")).toHaveValue("3");
+    await page.locator("#reset").click();
+    await expect(page.locator("#raise")).toHaveValue("0");
+  });
+});

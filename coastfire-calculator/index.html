@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=53d25079a1">
+  <link rel="stylesheet" href="style.css?v=30a8c74f3f">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=53d25079a1"></script>
+  <script type="module" src="app.js?v=30a8c74f3f"></script>
 </head>
 <body>
   <main class="page">
@@ -46,11 +46,11 @@
         </div>
 
         <div class="field" data-mode="contribution">
-          <label for="contribution">Monthly contribution</label>
-          <div class="affix" data-prefix="$">
+          <label for="contribution" id="contributionLabel">Monthly contribution</label>
+          <div class="affix" id="contributionAffix" data-prefix="$">
             <input id="contribution" name="contribution" type="text" inputmode="decimal" autocomplete="off" data-amount value="500">
           </div>
-          <p class="hint">Include any employer match.</p>
+          <p class="hint">Your own contribution; any employer match is added from the Contributions section.</p>
         </div>
 
         <div class="field" data-mode="target" hidden>
@@ -64,6 +64,55 @@
           <input id="retirementAge" name="retirementAge" type="number" inputmode="numeric" min="17" max="100" step="1" value="65">
           <p class="hint">The age you'd coast to if you stop contributing (CoastFIRE horizon).</p>
         </div>
+
+        <details class="advanced" id="contributionsSection" open>
+          <summary>Contributions</summary>
+
+          <fieldset class="mode" aria-label="Contribution unit">
+            <legend class="visually-hidden">Enter your contribution as</legend>
+            <label class="mode-option">
+              <input type="radio" name="contributionUnit" value="usd" checked>
+              <span>$ per month</span>
+            </label>
+            <label class="mode-option">
+              <input type="radio" name="contributionUnit" value="pct">
+              <span>% of salary</span>
+            </label>
+          </fieldset>
+
+          <div class="field">
+            <label for="salary">Annual salary</label>
+            <div class="affix" data-prefix="$">
+              <input id="salary" name="salary" type="text" inputmode="decimal" autocomplete="off" data-amount value="">
+            </div>
+            <p class="hint">Optional. Needed for % of salary and the employer match.</p>
+          </div>
+
+          <div class="field">
+            <label for="matchRate">Employer match</label>
+            <div class="affix" data-suffix="%">
+              <input id="matchRate" name="matchRate" type="number" inputmode="decimal" min="0" max="100" step="5" value="0">
+            </div>
+            <p class="hint">Cents matched per dollar you contribute (50% = 50 cents).</p>
+          </div>
+
+          <div class="field">
+            <label for="matchCap">Match applies up to</label>
+            <div class="affix" data-suffix="%">
+              <input id="matchCap" name="matchCap" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="0">
+            </div>
+            <p class="hint">% of salary. Example: 50% up to 6% of salary.</p>
+            <p class="hint" id="matchHint" hidden>Enter your salary to include the match.</p>
+          </div>
+
+          <div class="field">
+            <label for="raise">Yearly raises, after inflation</label>
+            <div class="affix" data-suffix="%">
+              <input id="raise" name="raise" type="number" inputmode="decimal" min="-5" max="10" step="0.5" value="0">
+            </div>
+            <p class="hint">Your contributions grow by this much each year.</p>
+          </div>
+        </details>
 
         <details class="advanced" id="retirementSection" open>
           <summary>Retirement</summary>
@@ -165,6 +214,7 @@
 
         <p id="summary" class="summary"></p>
         <p id="earlyNote" class="note" role="note" hidden></p>
+        <p id="limitWarning" class="note warn" role="note" hidden></p>
 
         <figure class="panel chart-panel">
           <figcaption class="chart-title">401(k) balance by age</figcaption>
