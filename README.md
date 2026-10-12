@@ -15,11 +15,14 @@ any Social Security / pension (which offsets spending dollar for dollar from its
 needs extra to bridge the gap), divided by the safe withdrawal rate. Contributions can be dollars or a percent
 of salary, with yearly real raises and an employer match; your own contributions are checked against the 2026
 IRS limits (the match isn't). Optionally, returns are simulated (1,000 seeded lognormal paths whose median
-matches the chosen rate; per-portfolio volatility) for a likely range and chances of success. Early-withdrawal
+matches the chosen rate; per-portfolio volatility) for a likely range and chances of success. Or replay
+history: real (after-inflation) returns of the S&P 500 and 10-year Treasuries, 1928–2025, mixed to match the
+portfolio, starting in every year (later years wrap around to 1928) — with the worst start year named. Sources
+(NYU/Damodaran returns, BLS CPI-U via FRED, December-to-December) are listed in `history.js`. Early-withdrawal
 penalties are not modeled.
 
 Code layout: pure, unit-tested modules (`calc.js`, `retirement.js`, `limits.js`, `scenario.js`,
-`montecarlo.js`, `risk.js`, `format.js`, `persist.js`) and `app.js` for all DOM, storage and URL wiring; the
+`montecarlo.js`, `history.js`, `risk.js`, `format.js`, `persist.js`) and `app.js` for all DOM, storage and URL wiring; the
 Monte Carlo work runs in `mc-worker.js`.
 
 Run `npm install` once, then:

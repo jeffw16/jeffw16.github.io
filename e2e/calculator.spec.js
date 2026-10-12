@@ -313,6 +313,47 @@ test.describe("coast path and sensitivity", () => {
 const simulate = (page) => page.locator("#returnModel").selectOption("montecarlo");
 const datasets = (page) => page.evaluate(() => Chart.getChart(document.getElementById("chart")).data.datasets.map((d) => ({ label: d.label, n: d.data.length })));
 
+const replayHistory = (page) => page.locator("#returnModel").selectOption("historical");
+
+test.describe("replaying historical markets", () => {
+  test("shows a historical card with the worst start year and a band", async ({ page }) => {
+    await replayHistory(page);
+    await expect(page.locator("#cardRisk")).toBeVisible();
+    await expect(page.locator("#riskTitle")).toHaveText("Across historical markets (1928\u20132025)");
+    await expect(page.locator("#riskList > div")).toHaveCount(3);
+    await expect(page.locator("#riskHint")).toContainText("Replays real returns starting in each of the 98 years from 1928");
+    await expect(page.locator("#riskHint")).toContainText(/worst start year for you was (19|20)\d\d\./);
+    await expect(page.locator("#riskHint")).not.toContainText("volatility");
+    const ds = await datasets(page);
+    expect(ds.find((d) => d.label === "Likely range (10th\u201390th percentile)").n).toBeGreaterThan(10);
+  });
+
+  test("hides the volatility field for a custom portfolio and works in target mode", async ({ page }) => {
+    await page.locator("#portfolio").selectOption("custom");
+    await replayHistory(page);
+    await expect(page.locator("#customVolatilityField")).toBeHidden();
+    await page.locator('input[name="mode"][value="target"]').check();
+    await expect(page.locator("#riskList > div").first()).toContainText("Contribution for 90% confidence");
+  });
+
+  test("switching back restores the simulated title and the steady view", async ({ page }) => {
+    await replayHistory(page);
+    await expect(page.locator("#riskTitle")).toContainText("historical");
+    await simulate(page);
+    await expect(page.locator("#riskTitle")).toHaveText("With market ups and downs");
+    await page.locator("#returnModel").selectOption("fixed");
+    await expect(page.locator("#cardRisk")).toBeHidden();
+  });
+
+  test("the choice is saved and shareable", async ({ page }) => {
+    await replayHistory(page);
+    await page.reload();
+    await expect(page.locator("#returnModel")).toHaveValue("historical");
+    await expect(page.locator("#riskList > div")).toHaveCount(3);
+    await expect.poll(() => page.url()).toContain("returnModel=historical");
+  });
+});
+
 test.describe("simulated ups and downs", () => {
   test("is off by default: no card, no band", async ({ page }) => {
     await expect(page.locator("#cardRisk")).toBeHidden();
