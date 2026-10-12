@@ -221,26 +221,41 @@ export function chartEndAge({ age, retirementAge, fireAge, maxAge = DEFAULT_MAX_
   return Math.min(maxAge, Math.ceil(milestone + padding));
 }
 
+/** A copy of a contribution schedule with every month from `coastMonth` on set to 0. */
+export function coastPathSchedule(schedule, coastMonth) {
+  const out = Float64Array.from(schedule);
+  out.fill(0, Math.max(0, coastMonth));
+  return out;
+}
+
 /**
  * Yearly series for the chart, from `age` through `endAge` inclusive.
  * `contributions` optionally replaces the constant `monthlyContribution`.
+ * With a numeric `coastMonth` it also returns `coastPath`: the balance if you
+ * contribute until that month and then stop (null otherwise).
  */
-export function buildSeries({ age, balance, monthlyContribution, annualReturn, fire, retirementAge, endAge, contributions }) {
+export function buildSeries({ age, balance, monthlyContribution, annualReturn, fire, retirementAge, endAge, contributions, coastMonth = null }) {
   const years = Math.max(0, Math.floor(endAge - age));
   const schedule = contributions ? contributions.slice(0, years * 12) : constantSchedule(monthlyContribution, years * 12);
-  const balances = simulate({ balance, contributions: schedule, monthlyReturns: monthlyRate(annualReturn) });
+  const rm = monthlyRate(annualReturn);
+  const balances = simulate({ balance, contributions: schedule, monthlyReturns: rm });
+  const pathBalances = Number.isFinite(coastMonth)
+    ? simulate({ balance, contributions: coastPathSchedule(schedule, coastMonth), monthlyReturns: rm })
+    : null;
   const ages = [];
   const noContrib = [];
   const withContrib = [];
+  const coastPath = pathBalances ? [] : null;
   const target = [];
   for (let t = 0; t <= years; t++) {
     const a = age + t;
     ages.push(a);
     noContrib.push(balanceNoContrib(balance, annualReturn, t));
     withContrib.push(balances[Math.min(t * 12, balances.length - 1)]);
+    coastPath?.push(pathBalances[Math.min(t * 12, pathBalances.length - 1)]);
     target.push(coastTarget({ fire, annualReturn, age: a, retirementAge }));
   }
-  return { ages, noContrib, withContrib, coastTarget: target };
+  return { ages, noContrib, withContrib, coastPath, coastTarget: target };
 }
 
 /** Split a fractional age into whole years and months. */

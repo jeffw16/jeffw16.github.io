@@ -1,6 +1,6 @@
 // Pure helpers for how much a retiree needs in the 401(k): taxes on withdrawals
 // and a Social Security / pension benefit that starts later. No DOM, no globals.
-import { monthlyRate } from "./calc.js?v=30a8c74f3f";
+import { monthlyRate } from "./calc.js?v=31c6da205c";
 
 /** Withdrawal needed to net `spending` after an effective tax rate. NaN for rates outside [0, 1). */
 export function grossWithdrawal(spending, taxRate) {

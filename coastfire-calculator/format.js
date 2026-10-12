@@ -1,6 +1,6 @@
 // Pure display helpers: comma-grouped dollar inputs and age labels. No DOM access.
 
-import { splitAge } from "./calc.js?v=30a8c74f3f";
+import { splitAge } from "./calc.js?v=31c6da205c";
 
 /** Parse a user-typed amount like "1,234.5" or "$50,000" into a number (NaN if empty/invalid). */
 export function parseAmount(text) {
@@ -65,4 +65,9 @@ export function deleteAcrossComma(value, caret, direction) {
     return formatWithCaret(value.slice(0, caret + 1) + value.slice(caret + 2), caret);
   }
   return null;
+}
+
+/** formatAge for a number, or `note` when the age is null (not reached). */
+export function formatAgeOrNote(age, note) {
+  return age === null || age === undefined ? note : formatAge(age);
 }

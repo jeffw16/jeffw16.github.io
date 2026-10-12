@@ -168,7 +168,7 @@ test("inputs survive a reload", async ({ page }) => {
 test("chart is drawn and the table view lists every series", async ({ page }) => {
   await expect(page.locator("#chart")).toBeVisible();
   await page.getByText("Show as table").click();
-  await expect(page.locator("#dataTable thead th")).toHaveCount(4);
+  await expect(page.locator("#dataTable thead th")).toHaveCount(5);
   expect(await page.locator("#dataTable tbody tr").count()).toBeGreaterThan(10);
 });
 
@@ -262,5 +262,50 @@ test.describe("contributions", () => {
     await expect(page.locator("#raise")).toHaveValue("3");
     await page.locator("#reset").click();
     await expect(page.locator("#raise")).toHaveValue("0");
+  });
+});
+
+const legend = (page) => page.evaluate(() => Chart.getChart(document.getElementById("chart")).legend.legendItems.map((item) => item.text));
+
+test.describe("coast path and sensitivity", () => {
+  test("legend lists the coast path after the current-balance line", async ({ page }) => {
+    expect(await legend(page)).toEqual([
+      "With monthly contributions",
+      "Current balance only",
+      "Contribute until coast, then stop",
+      "CoastFIRE target",
+    ]);
+  });
+
+  test("the coast path is hidden from the legend when coasting is out of reach", async ({ page }) => {
+    await page.locator("#balance").fill("0");
+    await page.locator("#contribution").fill("0");
+    expect(await legend(page)).not.toContain("Contribute until coast, then stop");
+    await page.locator("#balance").fill("50,000");
+    await page.locator("#contribution").fill("500");
+    expect(await legend(page)).toContain("Contribute until coast, then stop");
+  });
+
+  test("the table has a coast-path column", async ({ page }) => {
+    await page.getByText("Show as table").click();
+    await expect(page.locator("#dataTable thead th").nth(3)).toHaveText("Contribute until coast");
+  });
+
+  test("sensitivity table shows ages at -1% / chosen / +1% in contribution mode", async ({ page }) => {
+    await expect(page.locator("#sensitivity thead th")).toHaveText(["1% lower (6%)", "As chosen (7%)", "1% higher (8%)"]);
+    const rows = page.locator("#sensitivity tbody tr");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("Not by 65");
+    await expect(rows.nth(0)).toContainText(/44\s*years/);
+    await expect(rows.nth(1)).toContainText(/61\s*years|62\s*years/);
+  });
+
+  test("sensitivity table shows the contribution needed in target mode", async ({ page }) => {
+    await page.locator('input[name="mode"][value="target"]').check();
+    const row = page.locator("#sensitivity tbody tr");
+    await expect(row).toHaveCount(1);
+    await expect(row.locator("th")).toHaveText("Monthly contribution needed");
+    await expect(row.locator("td")).toHaveCount(3);
+    await expect(row.locator("td").nth(1)).toContainText("$1,072/mo");
   });
 });
