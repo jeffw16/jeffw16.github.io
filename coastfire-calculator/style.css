@@ -16,6 +16,7 @@
   --series-current: #eb6834;
   --series-coast: #1baf7a;
   --series-coastpath: #eda100;
+  --series-mega: #8a4fd1;
   --band: rgba(42, 120, 214, 0.16);
   --radius: 14px;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 16px rgb(0 0 0 / 0.04);
@@ -40,6 +41,7 @@
     --series-current: #d95926;
     --series-coast: #199e70;
     --series-coastpath: #c98500;
+    --series-mega: #a678e6;
     --band: rgba(57, 135, 229, 0.22);
   }
 }
@@ -61,6 +63,7 @@
   --series-current: #d95926;
   --series-coast: #199e70;
   --series-coastpath: #c98500;
+  --series-mega: #a678e6;
   --band: rgba(57, 135, 229, 0.22);
 }
 
@@ -200,6 +203,10 @@ input[type="number"]:focus, input[type="text"]:focus, select:focus {
 }
 
 input[aria-invalid="true"] { border-color: var(--error); }
+
+.check-row { display: flex; align-items: center; gap: 8px; }
+.check-row label { cursor: pointer; }
+input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); flex: none; }
 
 .affix { position: relative; }
 

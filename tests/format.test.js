@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote } from "../coastfire-calculator/format.js";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "../coastfire-calculator/format.js";
 
 describe("parseAmount", () => {
   it("parses plain and comma-grouped numbers", () => {
@@ -222,5 +222,22 @@ describe("formatAgeOrNote", () => {
   it("returns the note for null or undefined", () => {
     assert.equal(formatAgeOrNote(null, "Not by 65"), "Not by 65");
     assert.equal(formatAgeOrNote(undefined, "Not by 65"), "Not by 65");
+  });
+});
+
+describe("contributionLabel", () => {
+  it("labels the contribution input by unit", () => {
+    assert.equal(contributionLabel(), "Monthly contribution");
+    assert.equal(contributionLabel({ pctUnit: true }), "Contribution (% of salary)");
+  });
+  it("labels the solved contribution", () => {
+    assert.equal(contributionLabel({ needed: true }), "Monthly contribution needed");
+    assert.equal(contributionLabel({ pctUnit: true, needed: true }), "Contribution needed");
+  });
+  it("calls it the basic contribution alongside a Mega Backdoor Roth", () => {
+    assert.equal(contributionLabel({ mega: true }), "Basic monthly contribution");
+    assert.equal(contributionLabel({ mega: true, pctUnit: true }), "Basic contribution (% of salary)");
+    assert.equal(contributionLabel({ mega: true, needed: true }), "Basic monthly contribution needed");
+    assert.equal(contributionLabel({ mega: true, pctUnit: true, needed: true }), "Basic contribution needed");
   });
 });

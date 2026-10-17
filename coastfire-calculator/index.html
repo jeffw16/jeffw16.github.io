@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=f4edf72528">
+  <link rel="stylesheet" href="style.css?v=8c0d1dc4d1">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=f4edf72528"></script>
+  <script type="module" src="app.js?v=8c0d1dc4d1"></script>
 </head>
 <body>
   <main class="page">
@@ -50,7 +50,7 @@
           <div class="affix" id="contributionAffix" data-prefix="$">
             <input id="contribution" name="contribution" type="text" inputmode="decimal" autocomplete="off" data-amount value="500">
           </div>
-          <p class="hint">Your own contribution; any employer match is added from the Contributions section.</p>
+          <p class="hint" id="contributionHint">Your own contribution; any employer match is added from the Contributions section.</p>
         </div>
 
         <div class="field" data-mode="target" hidden>
@@ -111,6 +111,23 @@
               <input id="raise" name="raise" type="number" inputmode="decimal" min="-5" max="10" step="0.5" value="0">
             </div>
             <p class="hint">Your contributions grow by this much each year.</p>
+          </div>
+
+          <div class="field">
+            <div class="check-row">
+              <input id="megaBackdoor" name="megaBackdoor" type="checkbox">
+              <label for="megaBackdoor">My plan allows a Mega Backdoor Roth</label>
+              <button type="button" class="info" popovertarget="tip-mega" aria-label="About the Mega Backdoor Roth">i</button>
+            </div>
+            <p class="hint">After-tax contributions converted to Roth, on top of your basic 401(k) contribution.</p>
+          </div>
+
+          <div class="field" id="megaField" hidden>
+            <label for="megaContribution" id="megaLabel">Mega Backdoor Roth (after-tax) per month</label>
+            <div class="affix" id="megaAffix" data-prefix="$">
+              <input id="megaContribution" name="megaContribution" type="text" inputmode="decimal" autocomplete="off" data-amount value="0">
+            </div>
+            <p class="hint" id="megaHint" aria-live="polite"></p>
           </div>
         </details>
 
@@ -324,6 +341,7 @@
         <p id="summary" class="summary"></p>
         <p id="earlyNote" class="note" role="note" hidden></p>
         <p id="limitWarning" class="note warn" role="note" hidden></p>
+        <p id="megaWarning" class="note warn" role="note" hidden></p>
 
         <figure class="panel chart-panel">
           <figcaption class="chart-title">401(k) balance by age <button type="button" class="info" popovertarget="tip-coastpath" aria-label="About the coast-path line">i</button></figcaption>
@@ -336,7 +354,7 @@
             <div class="table-scroll">
               <table id="dataTable">
                 <thead>
-                  <tr><th scope="col">Age</th><th scope="col">Current balance only</th><th scope="col">With contributions</th><th scope="col">Contribute until coast</th><th scope="col">CoastFIRE target</th></tr>
+                  <tr><th scope="col">Age</th><th scope="col">Current balance only</th><th scope="col">With contributions</th><th scope="col">Contribute until coast</th><th scope="col">CoastFIRE target</th><th scope="col" id="megaColumn" hidden>Mega Backdoor Roth part</th></tr>
                 </thead>
                 <tbody></tbody>
               </table>
@@ -387,6 +405,10 @@
     <div id="tip-bridge" class="tip" popover>
       <h2>Social Security bridge</h2>
       <p>If you retire before Social Security or a pension starts, your 401(k) has to cover your full spending until it does. The calculator adds enough for those bridge years, then counts the benefit against spending afterward.</p>
+    </div>
+    <div id="tip-mega" class="tip" popover>
+      <h2>Mega Backdoor Roth</h2>
+      <p>Some plans let you contribute after-tax money beyond the basic employee limit and convert it to Roth right away. Your basic contribution, the employer match and after-tax money together can't exceed the yearly limit on total additions; catch-up contributions from age 50 don't count toward it. The after-tax amount isn't matched, and its growth is tax-free in retirement once converted.</p>
     </div>
     <div id="tip-coastpath" class="tip" popover>
       <h2>Contribute until coast, then stop</h2>

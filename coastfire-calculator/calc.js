@@ -164,26 +164,33 @@ export function requiredMonthlyContribution({ age, balance, annualReturn, fire, 
 export const DEFAULT_CONTRIBUTION = Object.freeze({ usd: 500, pct: 6 });
 
 /**
- * Monthly contributions for `months` months, as { employee, total } Float64Arrays.
- * `unit` is "usd" (amount = dollars per month) or "pct" (amount = percent of
- * salary, e.g. 6 for 6%). `raise` is the yearly real raise as a fraction; it
- * steps up each 12 months and applies to dollar contributions too. The match is
- * `matchRate` of the employee's contribution up to `matchCap` (fraction) of
- * salary; with no salary there is no match and a percent contribution is 0.
+ * Monthly contributions for `months` months, as { employee, match, afterTax,
+ * total } Float64Arrays. `unit` is "usd" (amounts are dollars per month) or
+ * "pct" (amounts are percents of salary, e.g. 6 for 6%). `amount` is the
+ * employee's basic (pre-tax / Roth) deferral and `afterTaxAmount` an optional
+ * after-tax (Mega Backdoor Roth) contribution in the same unit. `raise` is the
+ * yearly real raise as a fraction; it steps up each 12 months and applies to
+ * dollar contributions too. The match is `matchRate` of the basic contribution
+ * up to `matchCap` (fraction) of salary; after-tax money isn't matched. With
+ * no salary there is no match and a percent contribution is 0.
  */
-export function contributionSchedule({ months, unit, amount, salary, raise = 0, matchRate = 0, matchCap = 0 }) {
+export function contributionSchedule({ months, unit, amount, afterTaxAmount = 0, salary, raise = 0, matchRate = 0, matchCap = 0 }) {
   const count = Math.max(0, Math.round(months));
   const employee = new Float64Array(count);
+  const match = new Float64Array(count);
+  const afterTax = new Float64Array(count);
   const total = new Float64Array(count);
   const hasSalary = salary > 0;
+  const monthly = (value, growth) => (unit === "pct" ? (hasSalary ? ((value / 100) * salary * growth) / 12 : 0) : value * growth);
   for (let n = 0; n < count; n++) {
     const growth = Math.pow(1 + raise, Math.floor(n / 12));
-    const own = unit === "pct" ? (hasSalary ? ((amount / 100) * salary * growth) / 12 : 0) : amount * growth;
-    const match = hasSalary ? matchRate * Math.min(own, (matchCap * salary * growth) / 12) : 0;
+    const own = monthly(amount, growth);
     employee[n] = own;
-    total[n] = own + match;
+    match[n] = hasSalary ? matchRate * Math.min(own, (matchCap * salary * growth) / 12) : 0;
+    afterTax[n] = monthly(afterTaxAmount, growth);
+    total[n] = own + match[n] + afterTax[n];
   }
-  return { employee, total };
+  return { employee, match, afterTax, total };
 }
 
 /**
@@ -197,18 +204,19 @@ export function convertContribution({ amount, from, to, salary }) {
 }
 
 /**
- * Smallest employee contribution (in the schedule's unit) that grows the
- * balance to `target` after `months` months, found by bisection to half a
- * cent (or half a hundredth of a percent point). 0 if the balance alone gets
+ * Smallest employee (basic) contribution, in the schedule's unit, that grows
+ * the balance to `target` after `months` months, on top of a fixed
+ * `afterTaxAmount`, found by bisection to half a cent (or half a hundredth
+ * of a percent point). 0 if the balance (and any after-tax money) alone gets
  * there; null if months <= 0, a percent is asked for without salary, or the
  * target can't be reached.
  */
-export function solveEmployeeAmount({ balance, annualReturn, months, target, unit, salary, raise = 0, matchRate = 0, matchCap = 0 }) {
+export function solveEmployeeAmount({ balance, annualReturn, months, target, unit, afterTaxAmount = 0, salary, raise = 0, matchRate = 0, matchCap = 0 }) {
   if (!(months > 0)) return null;
   if (unit === "pct" && !(salary > 0)) return null;
   const rm = monthlyRate(annualReturn);
   const reaches = (amount) => {
-    const { total } = contributionSchedule({ months, unit, amount, salary, raise, matchRate, matchCap });
+    const { total } = contributionSchedule({ months, unit, amount, afterTaxAmount, salary, raise, matchRate, matchCap });
     return isCoastReached(simulate({ balance, contributions: total, monthlyReturns: rm })[Math.round(months)], target);
   };
   if (reaches(0)) return 0;
@@ -241,9 +249,12 @@ export function coastPathSchedule(schedule, coastMonth) {
  * Yearly series for the chart, from `age` through `endAge` inclusive.
  * `contributions` optionally replaces the constant `monthlyContribution`.
  * With a numeric `coastMonth` it also returns `coastPath`: the balance if you
- * contribute until that month and then stop (null otherwise).
+ * contribute until that month and then stop (null otherwise). With an
+ * `afterTax` schedule (Mega Backdoor Roth contributions, part of
+ * `contributions`) it also returns `afterTaxPart`: the share of the
+ * contributed balance those contributions grew to (null otherwise).
  */
-export function buildSeries({ age, balance, monthlyContribution, annualReturn, fire, retirementAge, endAge, contributions, coastMonth = null }) {
+export function buildSeries({ age, balance, monthlyContribution, annualReturn, fire, retirementAge, endAge, contributions, coastMonth = null, afterTax = null }) {
   const years = Math.max(0, Math.floor(endAge - age));
   const schedule = contributions ? contributions.slice(0, years * 12) : constantSchedule(monthlyContribution, years * 12);
   const rm = monthlyRate(annualReturn);
@@ -251,10 +262,14 @@ export function buildSeries({ age, balance, monthlyContribution, annualReturn, f
   const pathBalances = Number.isFinite(coastMonth)
     ? simulate({ balance, contributions: coastPathSchedule(schedule, coastMonth), monthlyReturns: rm })
     : null;
+  const afterTaxBalances = afterTax
+    ? simulate({ balance: 0, contributions: afterTax.slice(0, years * 12), monthlyReturns: rm })
+    : null;
   const ages = [];
   const noContrib = [];
   const withContrib = [];
   const coastPath = pathBalances ? [] : null;
+  const afterTaxPart = afterTaxBalances ? [] : null;
   const target = [];
   for (let t = 0; t <= years; t++) {
     const a = age + t;
@@ -262,9 +277,10 @@ export function buildSeries({ age, balance, monthlyContribution, annualReturn, f
     noContrib.push(balanceNoContrib(balance, annualReturn, t));
     withContrib.push(balances[Math.min(t * 12, balances.length - 1)]);
     coastPath?.push(pathBalances[Math.min(t * 12, pathBalances.length - 1)]);
+    afterTaxPart?.push(afterTaxBalances[Math.min(t * 12, afterTaxBalances.length - 1)]);
     target.push(coastTarget({ fire, annualReturn, age: a, retirementAge }));
   }
-  return { ages, noContrib, withContrib, coastPath, coastTarget: target };
+  return { ages, noContrib, withContrib, coastPath, afterTaxPart, coastTarget: target };
 }
 
 /** Split a fractional age into whole years and months. */

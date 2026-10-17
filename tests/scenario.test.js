@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { computeScenario, sensitivity } from "../coastfire-calculator/scenario.js";
+import { computeScenario, sensitivity, afterTaxAmountOf, scheduleOptions, rothShareAt } from "../coastfire-calculator/scenario.js";
 import { requiredBalance } from "../coastfire-calculator/retirement.js";
+import { contributionSchedule, balanceWithContrib } from "../coastfire-calculator/calc.js";
 
 const need = { spending: 40_000, taxRate: 0.1, swr: 0.04, benefit: 0, benefitAge: 67, annualReturn: 0.07 };
 const fire = Math.round(requiredBalance({ ...need, retireAge: 65 })); // 1,111,111
@@ -91,7 +92,152 @@ describe("sensitivity", () => {
     const [low, mid, high] = sensitivity({ ...base, mode: "target" });
     assert.ok(low.amount > mid.amount && mid.amount > high.amount);
   });
+  it("marks rows with no solution as unreachable", () => {
+    const rows = sensitivity({ ...base, mode: "target", contributionUnit: "pct" });
+    assert.deepEqual(rows.map((r) => r.unreachable), [true, true, true]);
+  });
   it("accepts custom deltas", () => {
     assert.equal(sensitivity(base, [0.02]).length, 1);
+  });
+});
+
+describe("afterTaxAmountOf", () => {
+  it("is the Mega Backdoor Roth contribution when the option is on", () => {
+    assert.equal(afterTaxAmountOf({ megaBackdoor: true, megaContribution: 1_500 }), 1_500);
+  });
+  it("is 0 when the option is off, whatever the amount", () => {
+    assert.equal(afterTaxAmountOf({ megaBackdoor: false, megaContribution: 1_500 }), 0);
+    assert.equal(afterTaxAmountOf({ megaContribution: 1_500 }), 0);
+  });
+  it("is 0 for a missing, blank or negative amount", () => {
+    assert.equal(afterTaxAmountOf({ megaBackdoor: true }), 0);
+    assert.equal(afterTaxAmountOf({ megaBackdoor: true, megaContribution: NaN }), 0);
+    assert.equal(afterTaxAmountOf({ megaBackdoor: true, megaContribution: -5 }), 0);
+  });
+});
+
+describe("scheduleOptions", () => {
+  it("collects the schedule inputs, with the after-tax amount", () => {
+    const i = { ...base, salary: 120_000, raise: 0.02, matchRate: 0.5, matchCap: 0.06, megaBackdoor: true, megaContribution: 800 };
+    assert.deepEqual(scheduleOptions(i), { unit: "usd", afterTaxAmount: 800, salary: 120_000, raise: 0.02, matchRate: 0.5, matchCap: 0.06 });
+  });
+  it("has no after-tax amount without the option", () => {
+    assert.equal(scheduleOptions(base).afterTaxAmount, 0);
+  });
+});
+
+describe("rothShareAt", () => {
+  const schedule = contributionSchedule({ months: 120, unit: "usd", amount: 1_000, afterTaxAmount: 1_000 });
+  it("is the after-tax part of the balance, with growth", () => {
+    const share = rothShareAt({ balance: 0, schedule, annualReturn: 0.07, months: 120 });
+    assert.ok(Math.abs(share - 0.5) < 1e-12); // equal basic and after-tax money, no starting balance
+  });
+  it("counts the starting balance as not Roth", () => {
+    const share = rothShareAt({ balance: 100_000, schedule, annualReturn: 0.07, months: 120 });
+    const roth = balanceWithContrib(0, 1_000, 0.07, 120);
+    const all = balanceWithContrib(100_000, 2_000, 0.07, 120);
+    assert.ok(Math.abs(share - roth / all) < 1e-9);
+  });
+  it("is 0 with no after-tax contributions", () => {
+    const plain = contributionSchedule({ months: 120, unit: "usd", amount: 1_000 });
+    assert.equal(rothShareAt({ balance: 50_000, schedule: plain, annualReturn: 0.07, months: 120 }), 0);
+  });
+  it("is 0 for no months or no balance at all", () => {
+    assert.equal(rothShareAt({ balance: 50_000, schedule, annualReturn: 0.07, months: 0 }), 0);
+    assert.equal(rothShareAt({ balance: 50_000, schedule, annualReturn: 0.07, months: -3 }), 0);
+    const empty = contributionSchedule({ months: 12, unit: "usd", amount: 0 });
+    assert.equal(rothShareAt({ balance: 0, schedule: empty, annualReturn: 0.07, months: 12 }), 0);
+  });
+  it("is 1 when only after-tax money went in", () => {
+    const onlyRoth = contributionSchedule({ months: 12, unit: "usd", amount: 0, afterTaxAmount: 500 });
+    assert.equal(rothShareAt({ balance: 0, schedule: onlyRoth, annualReturn: 0.05, months: 12 }), 1);
+  });
+});
+
+describe("computeScenario (Mega Backdoor Roth)", () => {
+  const plain = computeScenario(base);
+  const mega = { ...base, megaBackdoor: true, megaContribution: 1_000 };
+  const s = computeScenario(mega);
+  it("keeps the basic and Mega Backdoor Roth contributions apart", () => {
+    assert.equal(s.monthlyContribution, 500);
+    assert.equal(s.megaMonthly, 1_000);
+    assert.equal(s.matchMonthly, 0);
+    assert.equal(s.schedule.employee[0], 500);
+    assert.equal(s.schedule.afterTax[0], 1_000);
+    assert.equal(s.schedule.total[0], 1_500);
+  });
+  it("retires and coasts earlier than the basic contribution alone", () => {
+    assert.ok(s.fireAge < plain.fireAge);
+    assert.ok(s.coastAge < plain.coastAge);
+  });
+  it("reports the first year's after-tax room", () => {
+    assert.equal(s.megaRoom, 72_000 - 6_000);
+  });
+  it("reports room even when the amount is still 0, and none with the option off", () => {
+    assert.equal(computeScenario({ ...mega, megaContribution: 0 }).megaRoom, 66_000);
+    assert.equal(plain.megaRoom, null);
+  });
+  it("leaves the match out of the Mega Backdoor Roth and the room includes it", () => {
+    const m = computeScenario({ ...mega, salary: 120_000, matchRate: 1, matchCap: 0.05 });
+    assert.equal(m.matchMonthly, 500);
+    assert.equal(m.megaMonthly, 1_000);
+    assert.equal(m.megaRoom, 72_000 - 6_000 - 6_000);
+  });
+  it("estimates the Roth share of the balance when you'd retire", () => {
+    assert.ok(s.rothShare > 0 && s.rothShare < 1);
+    const months = Math.round((s.fireAge - base.age) * 12);
+    assert.equal(s.rothShare, rothShareAt({ balance: base.balance, schedule: s.schedule, annualReturn: base.annualReturn, months }));
+    assert.equal(plain.rothShare, 0);
+    assert.equal(computeScenario({ ...mega, megaContribution: 0 }).rothShare, 0);
+  });
+  it("uses the retirement age for the Roth share when FIRE isn't reached", () => {
+    const slow = { ...mega, contribution: 0, megaContribution: 50, spending: 400_000, fire: 11_111_111 };
+    const r = computeScenario(slow);
+    assert.equal(r.fireAge, null);
+    const months = (base.retirementAge - base.age) * 12;
+    assert.equal(r.rothShare, rothShareAt({ balance: base.balance, schedule: r.schedule, annualReturn: base.annualReturn, months }));
+  });
+  it("is within the limits at a moderate after-tax amount", () => {
+    assert.equal(s.overAdditions, null);
+    assert.equal(s.over, null);
+  });
+  it("flags after-tax money above the room left under the annual-additions limit", () => {
+    const big = computeScenario({ ...mega, contribution: 2_000, megaContribution: 4_500 });
+    assert.deepEqual(big.overAdditions, { age: 30, afterTax: 54_000, room: 48_000, limit: 72_000 });
+    assert.equal(big.over, null); // the basic $24,000/yr is within the deferral limit
+  });
+  it("does not count after-tax money toward the basic deferral limit", () => {
+    assert.equal(computeScenario({ ...mega, megaContribution: 3_000 }).over, null);
+  });
+  it("has no additions check with the option off", () => {
+    assert.equal(computeScenario({ ...base, megaContribution: 10_000 }).overAdditions, null);
+  });
+  it("uses percent of salary for both contributions", () => {
+    const p = computeScenario({ ...mega, contributionUnit: "pct", contribution: 10, megaContribution: 20, salary: 120_000 });
+    assert.ok(Math.abs(p.monthlyContribution - 1_000) < 1e-9);
+    assert.ok(Math.abs(p.megaMonthly - 2_000) < 1e-9);
+    assert.ok(Math.abs(p.megaRoom - (72_000 - 12_000)) < 1e-6);
+  });
+  it("in target mode holds the Mega Backdoor Roth fixed and solves a lower basic contribution", () => {
+    const target = computeScenario({ ...mega, mode: "target", megaContribution: 300 });
+    const plainTarget = computeScenario({ ...base, mode: "target" });
+    assert.ok(Math.abs(target.amount - (plainTarget.amount - 300)) < 0.02);
+    assert.equal(target.megaMonthly, 300);
+    assert.ok(Math.abs(target.fireAge - 55) < 1 / 12 + 1e-9);
+  });
+  it("in target mode needs no basic contribution when the Mega Backdoor Roth is enough", () => {
+    const target = computeScenario({ ...mega, mode: "target", megaContribution: 2_000 });
+    assert.equal(target.amount, 0);
+    assert.equal(target.monthlyContribution, 0);
+    assert.equal(target.megaRoom, 72_000);
+  });
+  it("has zero monthly amounts and full room with no months left", () => {
+    const end = computeScenario({ ...mega, age: 100, retirementAge: 100, targetAge: 100 });
+    assert.deepEqual([end.matchMonthly, end.megaMonthly, end.megaRoom, end.rothShare], [0, 0, 72_000, 0]);
+  });
+  it("in sensitivity shifts the ages with the Mega Backdoor Roth included", () => {
+    const [low, mid, high] = sensitivity(mega);
+    assert.equal(mid.fireAge, s.fireAge);
+    assert.ok(low.fireAge > mid.fireAge && mid.fireAge > high.fireAge);
   });
 });

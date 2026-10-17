@@ -185,6 +185,9 @@ describe("findCoastAge", () => {
   it("returns the current age when already at CoastFIRE", () => {
     assert.equal(findCoastAge({ ...base, balance: 100_000 }), 30);
   });
+  it("is null when the current age is already past retirement age", () => {
+    assert.equal(findCoastAge({ ...base, age: 70, balance: 0 }), null);
+  });
   it("finds the first month the balance meets the coast target", () => {
     const a = findCoastAge(base);
     assert.ok(a > 30 && a < 65);
@@ -212,6 +215,9 @@ describe("findCoastAge", () => {
 describe("findFireAge", () => {
   it("returns the current age when already at the FIRE number", () => {
     assert.equal(findFireAge({ ...base, balance: 2_000_000 }), 30);
+  });
+  it("is null when the current age is past the max age", () => {
+    assert.equal(findFireAge({ ...base, age: 90, maxAge: 85 }), null);
   });
   it("finds the first month the balance meets the FIRE number", () => {
     const a = findFireAge(base);
@@ -440,7 +446,49 @@ describe("contributionSchedule", () => {
     assert.deepEqual([...pct.total], [0, 0]);
   });
   it("is empty for zero months", () => {
-    assert.equal(contributionSchedule({ ...neutral, months: 0 }).total.length, 0);
+    const s = contributionSchedule({ ...neutral, months: 0 });
+    assert.deepEqual([s.employee.length, s.match.length, s.afterTax.length, s.total.length], [0, 0, 0, 0]);
+  });
+  it("splits the total into employee, match and after-tax parts", () => {
+    const s = contributionSchedule({ months: 12, unit: "usd", amount: 1_000, afterTaxAmount: 2_000, salary: 120_000, matchRate: 0.5, matchCap: 0.06 });
+    for (let n = 0; n < 12; n++) {
+      close(s.match[n], 300);
+      close(s.afterTax[n], 2_000);
+      close(s.total[n], s.employee[n] + s.match[n] + s.afterTax[n]);
+    }
+  });
+  it("has no after-tax contributions by default", () => {
+    const { afterTax, total, employee } = contributionSchedule(neutral);
+    assert.deepEqual([...afterTax], [...constantSchedule(0, 24)]);
+    assert.deepEqual([...total], [...employee]);
+  });
+  it("does not match after-tax (Mega Backdoor Roth) contributions", () => {
+    const args = { months: 1, unit: "usd", amount: 200, salary: 120_000, matchRate: 1, matchCap: 0.1 };
+    const without = contributionSchedule(args);
+    const withMega = contributionSchedule({ ...args, afterTaxAmount: 5_000 });
+    assert.equal(withMega.match[0], without.match[0]);
+    assert.equal(withMega.match[0], 200);
+  });
+  it("grows after-tax dollar contributions with raises", () => {
+    const { afterTax } = contributionSchedule({ ...neutral, months: 25, afterTaxAmount: 1_000, raise: 0.1 });
+    close(afterTax[11], 1_000);
+    close(afterTax[12], 1_100);
+    close(afterTax[24], 1_210);
+  });
+  it("computes after-tax percent contributions from salary, growing with raises", () => {
+    const { employee, afterTax } = contributionSchedule({ months: 13, unit: "pct", amount: 6, afterTaxAmount: 20, salary: 120_000, raise: 0.05 });
+    close(employee[0], 600);
+    close(afterTax[0], 2_000);
+    close(afterTax[12], 2_100);
+  });
+  it("gives no after-tax percent contribution without a salary", () => {
+    const { afterTax, total } = contributionSchedule({ months: 2, unit: "pct", amount: 6, afterTaxAmount: 20 });
+    assert.deepEqual([...afterTax, ...total], [0, 0, 0, 0]);
+  });
+  it("keeps after-tax dollar contributions without a salary", () => {
+    const { afterTax, total } = contributionSchedule({ months: 2, unit: "usd", amount: 500, afterTaxAmount: 1_000 });
+    assert.deepEqual([...afterTax], [1_000, 1_000]);
+    assert.deepEqual([...total], [1_500, 1_500]);
   });
 });
 
@@ -501,8 +549,28 @@ describe("solveEmployeeAmount", () => {
   it("is null for a percent target without salary", () => {
     assert.equal(solveEmployeeAmount({ ...p, unit: "pct" }), null);
   });
+  it("is null when no contribution reaches the target", () => {
+    assert.equal(solveEmployeeAmount({ ...p, target: Infinity }), null);
+  });
+  it("finds an amount under $1/mo", () => {
+    close(solveEmployeeAmount({ ...p, annualReturn: 0, balance: 0, months: 12, target: 6 }), 0.5, 0.01);
+  });
   it("works at a zero return", () => {
     close(solveEmployeeAmount({ ...p, annualReturn: 0, balance: 0, months: 100, target: 100_000 }), 1_000, 1e-4);
+  });
+  it("asks for that much less basic contribution with a fixed after-tax amount", () => {
+    // Contributions add linearly, so a fixed after-tax $300/mo lowers the basic amount by $300/mo.
+    const plain = solveEmployeeAmount(p);
+    const withMega = solveEmployeeAmount({ ...p, afterTaxAmount: 300 });
+    assert.ok(Math.abs(withMega - (plain - 300)) < 0.01);
+  });
+  it("is 0 when the after-tax amount alone reaches the target", () => {
+    assert.equal(solveEmployeeAmount({ ...p, afterTaxAmount: 5_000 }), 0);
+  });
+  it("solves the basic percent on top of an after-tax percent", () => {
+    const plain = solveEmployeeAmount({ ...p, unit: "pct", salary: 120_000 });
+    const withMega = solveEmployeeAmount({ ...p, unit: "pct", salary: 120_000, afterTaxAmount: 1 });
+    close(withMega, plain - 1, 1e-3);
   });
 });
 
@@ -542,5 +610,28 @@ describe("buildSeries coastPath", () => {
   it("equals the no-contribution line when coasting from month 0", () => {
     const s = buildSeries({ ...params, coastMonth: 0 });
     s.coastPath.forEach((v, k) => close(v, s.noContrib[k]));
+  });
+});
+
+describe("buildSeries afterTaxPart", () => {
+  const params = { ...base, endAge: 70 };
+  it("is null without an after-tax schedule", () => {
+    assert.equal(buildSeries(params).afterTaxPart, null);
+  });
+  it("is the balance the after-tax contributions alone grow to, from 0", () => {
+    const afterTax = constantSchedule(200, 40 * 12);
+    const s = buildSeries({ ...params, afterTax });
+    assert.equal(s.afterTaxPart.length, s.ages.length);
+    assert.equal(s.afterTaxPart[0], 0);
+    close(s.afterTaxPart[10], balanceWithContrib(0, 200, 0.07, 120));
+    assert.ok(s.afterTaxPart.every((v, k) => v <= s.withContrib[k]));
+  });
+});
+
+describe("buildSeries contributions", () => {
+  it("uses a contribution schedule in place of the constant amount", () => {
+    const params = { ...base, endAge: 40 };
+    const s = buildSeries({ ...params, contributions: constantSchedule(500, 120) });
+    assert.deepEqual(s.withContrib, buildSeries(params).withContrib);
   });
 });

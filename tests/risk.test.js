@@ -80,6 +80,13 @@ describe("computeRisk (target mode)", () => {
     const r = computeRisk(pctInput, computeScenario(pctInput), pathsFor(0.17, 100));
     assert.ok(r.amountForConfidence > 0 && r.amountForConfidence < 100);
   });
+  it("holds a Mega Backdoor Roth amount fixed and solves only the basic contribution", () => {
+    const megaInput = { ...input, megaBackdoor: true, megaContribution: 300 };
+    const megaScenario = computeScenario(megaInput);
+    const flat = computeRisk(megaInput, megaScenario, pathsFor(0, 20));
+    assert.ok(Math.abs(flat.amountForConfidence - megaScenario.amount) < 0.01);
+    assert.ok(Math.abs(flat.amountForConfidence - (scenario.amount - 300)) < 0.02);
+  });
 });
 
 describe("createRiskRunner", () => {
@@ -135,6 +142,21 @@ describe("describeRisk", () => {
     assert.match(rows[0].note, /^vs \$1,072\/mo if returns were steady$/);
     assert.match(rows[1].label, /by 55 with \$1,072\/mo/);
   });
+  it("describes target mode with a Mega Backdoor Roth as the basic contribution", () => {
+    const { rows } = run({ ...base, mode: "target", megaBackdoor: true, megaContribution: 300 });
+    assert.match(rows[0].label, /^Basic contribution for 90% confidence$/);
+    assert.match(rows[0].note, /^vs \$772\/mo if returns were steady, plus \$300\/mo Mega Backdoor Roth$/);
+  });
+  it("describes target mode without the basic label when the Mega Backdoor Roth amount is 0", () => {
+    const { rows } = run({ ...base, mode: "target", megaBackdoor: true, megaContribution: 0 });
+    assert.match(rows[0].label, /^Contribution for 90% confidence$/);
+    assert.doesNotMatch(rows[0].note, /Mega/);
+  });
+  it("says when the confidence contribution can't be reached", () => {
+    const input = { ...base, mode: "target" };
+    const { rows } = describeRisk(input, computeScenario(input), { confidence: 0.9, amountForConfidence: null, chanceAtSolved: 0.5 });
+    assert.equal(rows[0].value, "Not reachable");
+  });
   it("describes target mode in percent of salary", () => {
     const { rows } = run({ ...base, mode: "target", contributionUnit: "pct", salary: 120_000 });
     assert.match(rows[0].value, /^[\d.]+% of salary$/);
@@ -173,6 +195,13 @@ describe("historical replay", () => {
   it("titles the card by model", () => {
     assert.equal(riskTitle("historical"), "Across historical markets (1928\u20132025)");
     assert.equal(riskTitle("montecarlo"), "With market ups and downs");
+  });
+  it("replays a custom portfolio's mix and drops the half-the-time hint in target mode", () => {
+    const custom = { ...historical, portfolio: "custom", annualReturn: 0.05, mode: "target" };
+    const r = run(custom);
+    const { hint } = describeRisk(custom, computeScenario(custom), r);
+    assert.match(hint, /from 1928/);
+    assert.doesNotMatch(hint, /half the time/);
   });
   it("works in target mode too", () => {
     const target = run({ ...historical, mode: "target" });

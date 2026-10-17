@@ -1,6 +1,6 @@
 // Pure display helpers: comma-grouped dollar inputs and age labels. No DOM access.
 
-import { splitAge } from "./calc.js?v=f4edf72528";
+import { splitAge } from "./calc.js?v=8c0d1dc4d1";
 
 /** Parse a user-typed amount like "1,234.5" or "$50,000" into a number (NaN if empty/invalid). */
 export function parseAmount(text) {
@@ -70,4 +70,15 @@ export function deleteAcrossComma(value, caret, direction) {
 /** formatAge for a number, or `note` when the age is null (not reached). */
 export function formatAgeOrNote(age, note) {
   return age === null || age === undefined ? note : formatAge(age);
+}
+
+/**
+ * Label for the employee contribution: "Monthly contribution", "Contribution
+ * (% of salary)", or with `needed` "Monthly contribution needed" / "Contribution
+ * needed". With `mega` (a Mega Backdoor Roth alongside) it is the "Basic …" one.
+ */
+export function contributionLabel({ mega = false, pctUnit = false, needed = false } = {}) {
+  const words = [mega && "basic", !pctUnit && "monthly", "contribution", pctUnit && !needed && "(% of salary)", needed && "needed"]
+    .filter(Boolean).join(" ");
+  return words[0].toUpperCase() + words.slice(1);
 }
