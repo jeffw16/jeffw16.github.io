@@ -14,7 +14,12 @@ monthly, with contributions at month end. FIRE number = spending grossed up for 
 any Social Security / pension (which offsets spending dollar for dollar from its start age; retiring earlier
 needs extra to bridge the gap), divided by the safe withdrawal rate. Contributions can be dollars or a percent
 of salary, with yearly real raises and an employer match; your own contributions are checked against the 2026
-IRS limits (the match isn't). Optionally, returns are simulated (1,000 seeded lognormal paths whose median
+IRS limits (the match isn't). If your plan allows a **Mega Backdoor Roth**, tick the option to enter after-tax
+contributions separately from your basic (pre-tax / Roth) deferral: they aren't matched, don't count toward the
+deferral limit, and are checked against the 2026 $72,000 limit on total additions (basic + match + after-tax;
+catch-up contributions excluded). The page shows the room left each year, charts the Mega Backdoor Roth part of
+the balance, and estimates its share of the balance at retirement. In "What should I contribute?" the after-tax
+amount is held fixed and only the basic contribution is solved. The 100%-of-compensation cap isn't modeled. Optionally, returns are simulated (1,000 seeded lognormal paths whose median
 matches the chosen rate; per-portfolio volatility) for a likely range and chances of success. Or replay
 history: real (after-inflation) returns of the S&P 500 and 10-year Treasuries, 1928–2025, mixed to match the
 portfolio, starting in every year (later years wrap around to 1928) — with the worst start year named. Sources

@@ -1,8 +1,8 @@
 // "With market ups and downs": what the Monte Carlo paths say about a scenario.
 // computeRisk is pure; createRiskRunner adds a small cache of the (expensive)
 // random paths so editing contributions doesn't regenerate them.
-import { DEFAULT_MAX_AGE, contributionSchedule, coastPathSchedule } from "./calc.js?v=f4edf72528";
-import { computeScenario } from "./scenario.js?v=f4edf72528";
+import { DEFAULT_MAX_AGE, contributionSchedule, coastPathSchedule } from "./calc.js?v=8c0d1dc4d1";
+import { computeScenario, scheduleOptions } from "./scenario.js?v=8c0d1dc4d1";
 import {
   monthlyReturnPaths,
   balancePaths,
@@ -12,9 +12,9 @@ import {
   coastSuccessRate,
   coastConfidenceAge,
   contributionForConfidence,
-} from "./montecarlo.js?v=f4edf72528";
-import { formatAge, formatAgeOrNote } from "./format.js?v=f4edf72528";
-import { HISTORY, seriesFor, historicalPaths } from "./history.js?v=f4edf72528";
+} from "./montecarlo.js?v=8c0d1dc4d1";
+import { formatAge, formatAgeOrNote } from "./format.js?v=8c0d1dc4d1";
+import { HISTORY, seriesFor, historicalPaths } from "./history.js?v=8c0d1dc4d1";
 
 export const PATHS = 1000;
 export const SEED = 1;
@@ -50,9 +50,7 @@ export function computeRisk(i, scenario, returnPaths, { confidence = CONFIDENCE,
     result.chanceAtSolved = successRate(paths, months, target);
     result.amountForConfidence = contributionForConfidence({
       returnPaths, balance: i.balance, months, target, confidence,
-      scheduleFor: (amount) => contributionSchedule({
-        months, unit: i.contributionUnit, amount, salary: i.salary, raise: i.raise, matchRate: i.matchRate, matchCap: i.matchCap,
-      }).total,
+      scheduleFor: (amount) => contributionSchedule({ ...scheduleOptions(i), months, amount }).total,
     });
   } else {
     const common = { returnPaths, balance: i.balance, contributions: schedule.total, age: i.age, retirementAge: i.retirementAge, fire };
@@ -121,12 +119,15 @@ export function describeRisk(i, scenario, risk) {
   const edgeNote = " Coasting exactly on the line works only about half the time — markets don't move in straight lines.";
 
   if (scenario.isTarget) {
+    // With a Mega Backdoor Roth the after-tax amount is held fixed; only the basic contribution is solved.
+    const mega = scenario.megaMonthly > 0;
+    const megaNote = mega ? `, plus ${amountText(i.megaContribution)} Mega Backdoor Roth` : "";
     return {
       rows: [
         {
-          label: `Contribution for ${confidence} confidence`,
+          label: `${mega ? "Basic contribution" : "Contribution"} for ${confidence} confidence`,
           value: risk.amountForConfidence === null ? "Not reachable" : amountText(risk.amountForConfidence),
-          note: `vs ${amountText(scenario.amount)} if returns were steady`,
+          note: `vs ${amountText(scenario.amount)} if returns were steady${megaNote}`,
         },
         { label: `Chance of reaching your FIRE number by ${i.targetAge} with ${amountText(scenario.amount)}`, value: percent(risk.chanceAtSolved) },
       ],

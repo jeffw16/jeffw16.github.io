@@ -8,14 +8,44 @@ import {
   solveEmployeeAmount,
   findCoastAge,
   findFireAge,
-} from "./calc.js?v=f4edf72528";
-import { requiredBalanceFn } from "./retirement.js?v=f4edf72528";
-import { firstAgeOverLimit } from "./limits.js?v=f4edf72528";
+  simulate,
+  monthlyRate,
+} from "./calc.js?v=8c0d1dc4d1";
+import { requiredBalanceFn } from "./retirement.js?v=8c0d1dc4d1";
+import { firstAgeOverLimit, firstAgeOverAdditionsLimit, afterTaxRoom, annualTotals } from "./limits.js?v=8c0d1dc4d1";
+
+/** After-tax (Mega Backdoor Roth) contribution in the schedule's unit: 0 unless the option is on. */
+export function afterTaxAmountOf(i) {
+  return i.megaBackdoor && i.megaContribution > 0 ? i.megaContribution : 0;
+}
+
+/** The contributionSchedule options shared by every schedule of a scenario, except `months` and `amount`. */
+export function scheduleOptions(i) {
+  return {
+    unit: i.contributionUnit, afterTaxAmount: afterTaxAmountOf(i), salary: i.salary, raise: i.raise,
+    matchRate: i.matchRate, matchCap: i.matchCap,
+  };
+}
+
+/**
+ * Share of the balance after `months` months that comes from after-tax
+ * (Mega Backdoor Roth) contributions and their growth, so is Roth money.
+ * 0 with no after-tax contributions or no balance.
+ */
+export function rothShareAt({ balance, schedule, annualReturn, months }) {
+  const m = Math.max(0, Math.round(months));
+  const rm = monthlyRate(annualReturn);
+  const roth = simulate({ balance: 0, contributions: schedule.afterTax.subarray(0, m), monthlyReturns: rm }).at(-1);
+  const all = simulate({ balance, contributions: schedule.total.subarray(0, m), monthlyReturns: rm }).at(-1);
+  return roth > 0 && all > 0 ? roth / all : 0;
+}
 
 /**
  * Everything the page shows for one set of inputs. `i` has the shape of the
  * form's parsed values: mode, age, balance, retirementAge, targetAge,
  * contribution, contributionUnit, salary, raise, matchRate, matchCap, the
+ * optional Mega Backdoor Roth fields (megaBackdoor, megaContribution: an
+ * after-tax contribution in the same unit, held fixed in target mode), the
  * retirement-need fields (spending, taxRate, swr, benefit, benefitAge),
  * annualReturn and fire. Returns { unreachable: true } when target mode has
  * no solution.
@@ -26,15 +56,12 @@ export function computeScenario(i) {
   const requiredAt = requiredBalanceFn(i, i.retirementAge, fire);
   const coastNow = coastTarget({ fire, annualReturn: i.annualReturn, age: i.age, retirementAge: i.retirementAge });
   const alreadyCoast = isCoastReached(i.balance, coastNow);
-  const scheduleOf = (amount) => contributionSchedule({
-    months: Math.round((DEFAULT_MAX_AGE - i.age) * 12),
-    unit: i.contributionUnit, amount, salary: i.salary, raise: i.raise, matchRate: i.matchRate, matchCap: i.matchCap,
-  });
+  const options = scheduleOptions(i);
+  const scheduleOf = (amount) => contributionSchedule({ ...options, months: Math.round((DEFAULT_MAX_AGE - i.age) * 12), amount });
   const amount = isTarget
     ? solveEmployeeAmount({
-        balance: i.balance, annualReturn: i.annualReturn, months: Math.round((i.targetAge - i.age) * 12),
-        target: requiredAt(i.targetAge), unit: i.contributionUnit, salary: i.salary, raise: i.raise,
-        matchRate: i.matchRate, matchCap: i.matchCap,
+        ...options, balance: i.balance, annualReturn: i.annualReturn, months: Math.round((i.targetAge - i.age) * 12),
+        target: requiredAt(i.targetAge),
       })
     : i.contribution;
   if (amount === null) return { unreachable: true };
@@ -48,18 +75,36 @@ export function computeScenario(i) {
   // The employer match doesn't count toward the IRS limit; check your own contributions
   // for the years you'd be contributing.
   const contributingUntil = isTarget ? i.targetAge : fireAge ?? i.retirementAge;
-  const over = firstAgeOverLimit({
-    age: i.age,
-    employeeSchedule: schedule.employee.subarray(0, Math.max(0, Math.round((contributingUntil - i.age) * 12))),
-  });
+  const contributingMonths = Math.max(0, Math.round((contributingUntil - i.age) * 12));
+  const over = firstAgeOverLimit({ age: i.age, employeeSchedule: schedule.employee.subarray(0, contributingMonths) });
+
+  // Mega Backdoor Roth: after-tax money must fit under the annual-additions limit
+  // with the basic deferrals and the match. Room is shown for the first year.
+  const mega = options.afterTaxAmount > 0;
+  const firstYear = (s) => annualTotals(s.subarray(0, 12))[0] ?? 0;
+  const megaRoom = i.megaBackdoor
+    ? afterTaxRoom({ employee: firstYear(schedule.employee), match: firstYear(schedule.match) })
+    : null;
+  const overAdditions = mega
+    ? firstAgeOverAdditionsLimit({
+        age: i.age,
+        employeeSchedule: schedule.employee,
+        matchSchedule: schedule.match,
+        afterTaxSchedule: schedule.afterTax.subarray(0, contributingMonths),
+      })
+    : null;
+  const rothShare = mega
+    ? rothShareAt({ balance: i.balance, schedule, annualReturn: i.annualReturn, months: contributingMonths })
+    : 0;
 
   return {
     unreachable: false,
     isTarget, fire, requiredAt, coastNow, alreadyCoast, amount, schedule, monthlyContribution,
-    matchMonthly: schedule.total[0] - schedule.employee[0],
+    matchMonthly: schedule.match[0] ?? 0,
+    megaMonthly: schedule.afterTax[0] ?? 0,
     params, coastAge, fireAge,
     coastMonth: coastAge === null ? null : Math.round((coastAge - i.age) * 12),
-    over,
+    over, megaRoom, overAdditions, rothShare,
   };
 }
 

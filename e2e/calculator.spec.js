@@ -168,7 +168,7 @@ test("inputs survive a reload", async ({ page }) => {
 test("chart is drawn and the table view lists every series", async ({ page }) => {
   await expect(page.locator("#chart")).toBeVisible();
   await page.getByText("Show as table").click();
-  await expect(page.locator("#dataTable thead th")).toHaveCount(5);
+  await expect(page.locator("#dataTable thead th:visible")).toHaveCount(5);
   expect(await page.locator("#dataTable tbody tr").count()).toBeGreaterThan(10);
 });
 
@@ -262,6 +262,106 @@ test.describe("contributions", () => {
     await expect(page.locator("#raise")).toHaveValue("3");
     await page.locator("#reset").click();
     await expect(page.locator("#raise")).toHaveValue("0");
+  });
+});
+
+test.describe("Mega Backdoor Roth", () => {
+  const mega = (page) => page.locator("#megaBackdoor");
+  const dollars = (text) => Number(text.match(/\$([\d,]+)/)[1].replace(/,/g, ""));
+
+  test("is off by default and shows a separate after-tax field when turned on", async ({ page }) => {
+    await expect(page.locator("#megaContribution")).toBeHidden();
+    await expect(page.locator("#contributionLabel")).toHaveText("Monthly contribution");
+    await mega(page).check();
+    await expect(page.locator("#megaContribution")).toBeVisible();
+    await expect(page.locator("#contributionLabel")).toHaveText("Basic monthly contribution");
+    await expect(page.locator("#contributionHint")).toContainText("Mega Backdoor Roth");
+    await expect(page.locator("#megaHint")).toContainText("Room this year: $66,000/yr ($5,500/mo)");
+    await mega(page).uncheck();
+    await expect(page.locator("#megaContribution")).toBeHidden();
+    await expect(page.locator("#contributionLabel")).toHaveText("Monthly contribution");
+  });
+
+  test("adds the after-tax amount on top of the basic contribution, shown apart", async ({ page }) => {
+    const before = await page.locator("#cardPrimary").innerText();
+    await mega(page).check();
+    await page.locator("#megaContribution").fill("1,000");
+    await expect(page.locator("#cardPrimary .card-sub")).toContainText("$500/mo basic + $1,000/mo Mega Backdoor Roth");
+    await expect(page.locator("#summary")).toContainText("Mega Backdoor Roth money");
+    expect(await page.locator("#cardPrimary").innerText()).not.toBe(before);
+    await expect(page.locator("#megaHint")).toContainText("$66,000/yr");
+    expect(await legend(page)).toContain("Mega Backdoor Roth part");
+    await page.getByText("Show as table").click();
+    await expect(page.locator("#dataTable thead th:visible")).toHaveCount(6);
+    await expect(page.locator("#megaColumn")).toBeVisible();
+    await expect(page.locator("#dataTable tbody tr").first().locator("td")).toHaveCount(6);
+  });
+
+  test("ignores the after-tax amount when turned off", async ({ page }) => {
+    const before = await page.locator("#cardPrimary").innerText();
+    await mega(page).check();
+    await page.locator("#megaContribution").fill("1,000");
+    await mega(page).uncheck();
+    await expect.poll(() => page.locator("#cardPrimary").innerText()).toBe(before);
+    expect(await legend(page)).not.toContain("Mega Backdoor Roth part");
+    await expect(page.locator("#dataTable tbody tr").first().locator("td")).toHaveCount(5);
+  });
+
+  test("warns when after-tax money is over the room under the total limit", async ({ page }) => {
+    const warning = page.locator("#megaWarning");
+    await mega(page).check();
+    await page.locator("#contribution").fill("2,000");
+    await page.locator("#megaContribution").fill("4,000");
+    await expect(warning).toBeHidden();
+    await page.locator("#megaContribution").fill("4,500");
+    await expect(warning).toContainText("$54,000/yr at age 30");
+    await expect(warning).toContainText("$48,000/yr left");
+    await expect(warning).toContainText("$72,000/yr");
+    await expect(page.locator("#limitWarning")).toBeHidden();
+  });
+
+  test("rejects a blank after-tax amount only while the option is on", async ({ page }) => {
+    await mega(page).check();
+    await page.locator("#megaContribution").fill("");
+    await expect(page.locator("#error")).toContainText("Mega Backdoor Roth");
+    await mega(page).uncheck();
+    await expect(page.locator("#error")).toBeHidden();
+  });
+
+  test("target mode solves only the basic contribution, holding the after-tax amount", async ({ page }) => {
+    await page.locator('input[name="mode"][value="target"]').check();
+    const without = dollars(await card(page, "cardPrimary").innerText());
+    await mega(page).check();
+    await page.locator("#megaContribution").fill("300");
+    await expect(page.locator("#cardPrimary .card-label")).toHaveText("Basic monthly contribution needed");
+    await expect(page.locator("#cardPrimary .card-sub")).toContainText("Plus your $300/mo Mega Backdoor Roth.");
+    await expect.poll(async () => dollars(await card(page, "cardPrimary").innerText())).toBe(without - 300);
+    await expect(page.locator("#sensitivity tbody th").first()).toHaveText("Basic monthly contribution needed");
+  });
+
+  test("switching $ <-> % converts the after-tax amount too", async ({ page }) => {
+    await page.locator("#salary").fill("120,000");
+    await mega(page).check();
+    await page.locator("#megaContribution").fill("2,000");
+    await unit(page, "pct");
+    await expect(page.locator("#megaContribution")).toHaveValue("20");
+    await expect(page.locator("#megaLabel")).toHaveText("Mega Backdoor Roth (after-tax, % of salary)");
+    await expect(page.locator("#megaAffix")).toHaveAttribute("data-suffix", "%");
+    await unit(page, "usd");
+    await expect(page.locator("#megaContribution")).toHaveValue("2,000");
+  });
+
+  test("is saved, shareable and reset", async ({ page }) => {
+    await mega(page).check();
+    await page.locator("#megaContribution").fill("1,000");
+    await expect.poll(() => new URL(page.url()).search).toBe("?megaBackdoor=on&megaContribution=1000");
+    await page.reload();
+    await expect(mega(page)).toBeChecked();
+    await expect(page.locator("#megaContribution")).toHaveValue("1,000");
+    await page.locator("#reset").click();
+    await expect(mega(page)).not.toBeChecked();
+    await expect(page.locator("#megaContribution")).toBeHidden();
+    await expect(page.locator("#megaContribution")).toHaveValue("0");
   });
 });
 
