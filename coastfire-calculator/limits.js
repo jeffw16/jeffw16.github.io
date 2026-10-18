@@ -1,4 +1,4 @@
-// IRS 401(k) limits and checks of a contribution schedule against them.
+// IRS workplace-plan limits (401(k), 403(b), 457(b), TSP) and checks of a contribution schedule against them.
 // Pure: no DOM, no globals.
 
 // 2026 limits (IRS Notice 2025-67, as reported by several retirement-plan sources):

@@ -1,4 +1,4 @@
-// Federal (plus flat state) income tax on 401(k) withdrawals, used to suggest the
+// Federal (plus flat state) income tax on pre-tax retirement-account withdrawals, used to suggest the
 // "effective tax rate on withdrawals". Pure functions, no DOM or globals.
 //
 // Sources, tax year 2025 (IRS, "Federal income tax rates and brackets" and Publication 17,
@@ -78,7 +78,7 @@ export function taxableSocialSecurity({ benefit, otherIncome, status }) {
 }
 
 /**
- * Tax on a year with a gross 401(k) `withdrawal` and a Social Security `benefit`.
+ * Tax on a year with a gross retirement-account `withdrawal` and a Social Security `benefit`.
  * `taxFreeShare` is the part of the withdrawal that is untaxed (Roth, or a return of basis).
  */
 export function taxBreakdown({ withdrawal, benefit = 0, status = DEFAULT_FILING_STATUS, over65 = false, stateRate = 0, taxFreeShare = 0 }) {
@@ -93,7 +93,7 @@ export function taxBreakdown({ withdrawal, benefit = 0, status = DEFAULT_FILING_
 }
 
 /**
- * The effective tax rate on 401(k) withdrawals that leaves `spending` after tax once a
+ * The effective tax rate on retirement-account withdrawals that leaves `spending` after tax once a
  * `benefit` also pays. Returns { rate, withdrawal, breakdown }; `rate` is tax / withdrawal,
  * the quantity the calculator's tax-rate field means. 0 when the benefit alone covers spending.
  */

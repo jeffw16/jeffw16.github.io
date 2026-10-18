@@ -10,20 +10,20 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=8c0d1dc4d1";
+} from "./calc.js?v=4b8d7eb0c0";
 import {
   requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   earlyAccessGuidance,
-} from "./retirement.js?v=8c0d1dc4d1";
-import { IRS_LIMITS } from "./limits.js?v=8c0d1dc4d1";
-import { computeScenario, sensitivity } from "./scenario.js?v=8c0d1dc4d1";
-import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=8c0d1dc4d1";
-import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=8c0d1dc4d1";
-import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=8c0d1dc4d1";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=8c0d1dc4d1";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=8c0d1dc4d1";
+} from "./retirement.js?v=4b8d7eb0c0";
+import { IRS_LIMITS } from "./limits.js?v=4b8d7eb0c0";
+import { computeScenario, sensitivity } from "./scenario.js?v=4b8d7eb0c0";
+import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=4b8d7eb0c0";
+import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=4b8d7eb0c0";
+import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=4b8d7eb0c0";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=4b8d7eb0c0";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=4b8d7eb0c0";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -225,7 +225,7 @@ function needAt(retireAge) {
 function setFireLock(covered, benefitAge) {
   $("fire").readOnly = covered;
   $("fireHint").textContent = covered
-    ? `Your benefit covers your spending from age ${benefitAge}, so no 401(k) balance is needed.`
+    ? `Your benefit covers your spending from age ${benefitAge}, so no retirement balance is needed.`
     : FIRE_HINT;
 }
 
@@ -239,7 +239,7 @@ function syncFire() {
 }
 const FIRE_HINT = $("fireHint").textContent;
 const CONTRIBUTION_HINT = $("contributionHint").textContent;
-const CONTRIBUTION_HINT_MEGA = "Your pre-tax or Roth 401(k) deferral, up to the IRS limit. Add after-tax money under Mega Backdoor Roth.";
+const CONTRIBUTION_HINT_MEGA = "Your pre-tax or Roth deferral to your workplace plan, up to the IRS limit. Add after-tax money under Mega Backdoor Roth.";
 
 function readInputs() {
   const portfolio = $("portfolio").value;
@@ -277,7 +277,7 @@ function validate(i) {
     if (!ok) problems.push(msg);
   };
   check("age", Number.isFinite(i.age) && i.age >= 16 && i.age < DEFAULT_MAX_AGE, "Enter a current age between 16 and 99.");
-  check("balance", Number.isFinite(i.balance) && i.balance >= 0, "Enter your current 401(k) balance (0 or more).");
+  check("balance", Number.isFinite(i.balance) && i.balance >= 0, "Enter your current retirement balance (0 or more).");
   check("retirementAge", Number.isFinite(i.retirementAge) && i.retirementAge > i.age && i.retirementAge <= DEFAULT_MAX_AGE,
     "Retirement age must be after your current age and at most 100.");
   if (i.mode === "contribution") {
@@ -379,7 +379,7 @@ function fillTaxRows(i) {
   const rows = [
     ["Spending you want after tax", money.format(i.spending)],
     ...(i.benefit > 0 ? [["Social Security / pension", money.format(i.benefit)]] : []),
-    ["401(k) withdrawal needed", money.format(b.withdrawal)],
+    ["Withdrawal needed", money.format(b.withdrawal)],
     ...(taxFreeShare > 0 ? [["Taxable part of withdrawal", money.format(b.taxableWithdrawal)]] : []),
     ...(i.benefit > 0 ? [["Taxable Social Security", money.format(b.taxableBenefit)]] : []),
     [`Standard deduction${over65 ? " (incl. age 65+)" : ""}`, money.format(b.deduction)],
@@ -537,7 +537,7 @@ function update() {
 
   $("limitWarning").hidden = !over;
   if (over) {
-    $("limitWarning").textContent = `Your ${mega ? "basic " : ""}contributions reach ${money.format(over.annual)}/yr at age ${over.age}, above the ${IRS_LIMITS.year} 401(k) limit of ${money.format(over.limit)}/yr for that age. Consider ${mega ? "moving the rest to Mega Backdoor Roth contributions, " : ""}an IRA or taxable account for the rest.`;
+    $("limitWarning").textContent = `Your ${mega ? "basic " : ""}contributions reach ${money.format(over.annual)}/yr at age ${over.age}, above the ${IRS_LIMITS.year} workplace-plan limit (401(k), 403(b), 457(b), TSP) of ${money.format(over.limit)}/yr for that age. If part of that goes to an IRA or HSA, which have their own limits, you may be fine; otherwise consider ${mega ? "moving the rest to Mega Backdoor Roth contributions, " : ""}an IRA, HSA or taxable account for the rest.`;
   }
   $("megaWarning").hidden = !overAdditions;
   if (overAdditions) {
@@ -614,8 +614,8 @@ function update() {
 }
 
 const EARLY_NOTES = {
-  "rule-of-55": "Retiring at 55–59½? The Rule of 55 lets you withdraw from the 401(k) of the employer you leave in or after the year you turn 55 without the 10% early-withdrawal penalty.",
-  "before-55": "Retiring before 55 means bridging to 59½ — for example with 72(t) substantially equal payments, a Roth conversion ladder, or taxable savings. This calculator doesn't model early-withdrawal penalties.",
+  "rule-of-55": "Retiring at 55–59½? The Rule of 55 lets you withdraw from the 401(k) or 403(b) of the employer you leave in or after the year you turn 55 without the 10% early-withdrawal penalty (age 50 for public-safety workers in a government plan). Governmental 457(b) plans have no early-withdrawal penalty at all; IRAs don't qualify.",
+  "before-55": "Retiring before 55 means bridging to 59½ — for example with 72(t) substantially equal payments, a Roth conversion ladder, governmental 457(b) money (no early-withdrawal penalty), or taxable savings. This calculator doesn't model early-withdrawal penalties.",
 };
 
 function summaryHtml(s) {
@@ -677,7 +677,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=8c0d1dc4d1", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=4b8d7eb0c0", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;

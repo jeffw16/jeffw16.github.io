@@ -5,7 +5,8 @@
 
 ### CoastFIRE calculator
 
-Finds when you can stop contributing to your 401(k) and coast to retirement ("When can I retire?"), or the
+Finds when you can stop contributing to your retirement accounts (401(k), 403(b),
+457(b), TSP, IRAs, HSAs) and coast to retirement ("When can I retire?"), or the
 contribution needed to retire by a given age ("What should I contribute?"). Inputs are remembered in your
 browser, and **Copy link** shares the exact scenario in the URL (a link with parameters defines the whole scenario).
 
@@ -14,7 +15,7 @@ monthly, with contributions at month end. FIRE number = spending grossed up for 
 any Social Security / pension (which offsets spending dollar for dollar from its start age; retiring earlier
 needs extra to bridge the gap), divided by the safe withdrawal rate. Contributions can be dollars or a percent
 of salary, with yearly real raises and an employer match; your own contributions are checked against the 2026
-IRS limits (the match isn't). If your plan allows a **Mega Backdoor Roth**, tick the option to enter after-tax
+IRS workplace-plan deferral limits (the match isn't; IRA and HSA limits aren't modeled). If your plan allows a **Mega Backdoor Roth**, tick the option to enter after-tax
 contributions separately from your basic (pre-tax / Roth) deferral: they aren't matched, don't count toward the
 deferral limit, and are checked against the 2026 $72,000 limit on total additions (basic + match + after-tax;
 catch-up contributions excluded). The page shows the room left each year, charts the Mega Backdoor Roth part of

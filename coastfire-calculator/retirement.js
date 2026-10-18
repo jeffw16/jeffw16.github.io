@@ -1,6 +1,6 @@
-// Pure helpers for how much a retiree needs in the 401(k): taxes on withdrawals
+// Pure helpers for how much a retiree needs in retirement accounts: taxes on withdrawals
 // and a Social Security / pension benefit that starts later. No DOM, no globals.
-import { monthlyRate } from "./calc.js?v=8c0d1dc4d1";
+import { monthlyRate } from "./calc.js?v=4b8d7eb0c0";
 
 /** Withdrawal needed to net `spending` after an effective tax rate. NaN for rates outside [0, 1). */
 export function grossWithdrawal(spending, taxRate) {
@@ -25,9 +25,9 @@ function bridgeMonths(benefitAge, retireAge) {
 }
 
 /**
- * 401(k) balance needed to retire at `retireAge`.
- * The benefit offsets spending dollar for dollar; only 401(k) withdrawals are
- * taxed. Before the benefit starts the 401(k) pays the full spending (funded by
+ * Retirement balance needed to retire at `retireAge`.
+ * The benefit offsets spending dollar for dollar; only withdrawals are
+ * taxed. Before the benefit starts the balance pays the full spending (funded by
  * an annuity at the real return); afterwards it pays the shortfall at the
  * safe withdrawal rate.
  */
@@ -51,7 +51,7 @@ export function spendingFromRequired({ required, taxRate, swr, benefit = 0, bene
   return a > 0 ? (k * required) / a : NaN;
 }
 
-/** True when a benefit that has started by retirement covers all spending, so no 401(k) balance is needed. */
+/** True when a benefit that has started by retirement covers all spending, so no retirement balance is needed. */
 export function benefitCoversSpending({ spending, benefit, benefitAge, retireAge }) {
   return benefit > 0 && benefit >= spending && benefitAge <= retireAge;
 }
