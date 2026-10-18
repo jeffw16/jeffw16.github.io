@@ -265,6 +265,57 @@ test.describe("contributions", () => {
   });
 });
 
+test.describe("IRA, HSA and employer contributions", () => {
+  test("IRA/HSA money adds to the plan but isn't matched", async ({ page }) => {
+    await page.locator("#salary").fill("120,000");
+    await page.locator("#matchRate").fill("100");
+    await page.locator("#matchCap").fill("10");
+    const sub = page.locator("#cardPrimary .card-sub");
+    await expect(sub).toContainText("$500/mo plus $500/mo match");
+    const before = await page.locator("#cardPrimary").innerText();
+    await page.locator("#otherContribution").fill("300");
+    await expect(sub).toContainText("$500/mo + $300/mo IRA/HSA plus $500/mo match");
+    expect(await page.locator("#cardPrimary").innerText()).not.toBe(before);
+  });
+
+  test("IRA/HSA money doesn't trigger the workplace-plan limit", async ({ page }) => {
+    await page.locator("#contribution").fill("2,000");
+    await page.locator("#otherContribution").fill("1,000");
+    await expect(page.locator("#limitWarning")).toBeHidden();
+  });
+
+  test("an employer contribution needs no employee contribution", async ({ page }) => {
+    await page.locator("#contribution").fill("0");
+    await page.locator("#employerContribution").fill("5");
+    await expect(page.locator("#employerHint")).toBeVisible();
+    await page.locator("#salary").fill("120,000");
+    await expect(page.locator("#employerHint")).toBeHidden();
+    // 5% of $120,000 is the default $500/mo, so the default result.
+    await expect(page.locator("#cardPrimary")).toContainText(/61\s*years, 11 months/);
+    await expect(page.locator("#cardPrimary .card-sub")).toContainText("$0/mo plus $500/mo employer contribution");
+  });
+
+  test("target mode holds IRA/HSA and employer money fixed", async ({ page }) => {
+    await page.locator('input[name="mode"][value="target"]').check();
+    await expect(card(page, "cardPrimary")).toContainText("$1,072");
+    await page.locator("#otherContribution").fill("72");
+    await expect(card(page, "cardPrimary")).toContainText("$1,000");
+    await expect(page.locator("#cardPrimary .card-sub")).toContainText("Plus your $72/mo IRA/HSA.");
+    await page.locator("#salary").fill("120,000");
+    await page.locator("#employerContribution").fill("100");
+    await expect(card(page, "cardPrimary")).toHaveText("$0/ mo");
+    await expect(page.locator("#cardPrimary .card-sub")).toContainText("Your current balance, IRA/HSA contributions and employer contribution alone reach");
+  });
+
+  test("switching to % of salary converts the IRA/HSA amount", async ({ page }) => {
+    await page.locator("#salary").fill("120,000");
+    await page.locator("#otherContribution").fill("500");
+    await unit(page, "pct");
+    await expect(page.locator("#otherContribution")).toHaveValue("5");
+    await expect(page.locator("#otherLabel")).toHaveText("IRA, HSA and other accounts (% of salary)");
+  });
+});
+
 test.describe("Mega Backdoor Roth", () => {
   const mega = (page) => page.locator("#megaBackdoor");
   const dollars = (text) => Number(text.match(/\$([\d,]+)/)[1].replace(/,/g, ""));

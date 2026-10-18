@@ -10,20 +10,25 @@ import {
   findFireAge,
   simulate,
   monthlyRate,
-} from "./calc.js?v=4b8d7eb0c0";
-import { requiredBalanceFn } from "./retirement.js?v=4b8d7eb0c0";
-import { firstAgeOverLimit, firstAgeOverAdditionsLimit, afterTaxRoom, annualTotals } from "./limits.js?v=4b8d7eb0c0";
+} from "./calc.js?v=a26466d225";
+import { requiredBalanceFn } from "./retirement.js?v=a26466d225";
+import { firstAgeOverLimit, firstAgeOverAdditionsLimit, afterTaxRoom, annualTotals } from "./limits.js?v=a26466d225";
 
 /** After-tax (Mega Backdoor Roth) contribution in the schedule's unit: 0 unless the option is on. */
 export function afterTaxAmountOf(i) {
   return i.megaBackdoor && i.megaContribution > 0 ? i.megaContribution : 0;
 }
 
+/** Contribution to IRAs, HSAs and other accounts outside the workplace plan, in the schedule's unit (0 if missing). */
+export function otherAmountOf(i) {
+  return i.otherContribution > 0 ? i.otherContribution : 0;
+}
+
 /** The contributionSchedule options shared by every schedule of a scenario, except `months` and `amount`. */
 export function scheduleOptions(i) {
   return {
-    unit: i.contributionUnit, afterTaxAmount: afterTaxAmountOf(i), salary: i.salary, raise: i.raise,
-    matchRate: i.matchRate, matchCap: i.matchCap,
+    unit: i.contributionUnit, afterTaxAmount: afterTaxAmountOf(i), otherAmount: otherAmountOf(i), salary: i.salary, raise: i.raise,
+    matchRate: i.matchRate, matchCap: i.matchCap, employerRate: i.employerRate > 0 ? i.employerRate : 0,
   };
 }
 
@@ -43,9 +48,12 @@ export function rothShareAt({ balance, schedule, annualReturn, months }) {
 /**
  * Everything the page shows for one set of inputs. `i` has the shape of the
  * form's parsed values: mode, age, balance, retirementAge, targetAge,
- * contribution, contributionUnit, salary, raise, matchRate, matchCap, the
- * optional Mega Backdoor Roth fields (megaBackdoor, megaContribution: an
- * after-tax contribution in the same unit, held fixed in target mode), the
+ * contribution (to the workplace plan), contributionUnit, salary, raise,
+ * matchRate, matchCap, employerRate (an employer contribution as a fraction of
+ * salary), otherContribution (IRAs, HSAs: same unit, not matched and outside
+ * the workplace-plan limits), the optional Mega Backdoor Roth fields
+ * (megaBackdoor, megaContribution: an after-tax contribution in the same
+ * unit; it and otherContribution are held fixed in target mode), the
  * retirement-need fields (spending, taxRate, swr, benefit, benefitAge),
  * annualReturn and fire. Returns { unreachable: true } when target mode has
  * no solution.
@@ -72,24 +80,25 @@ export function computeScenario(i) {
   const coastAge = alreadyCoast ? i.age : findCoastAge(params);
   const fireAge = isTarget ? findFireAge(params) ?? i.targetAge : findFireAge(params);
 
-  // The employer match doesn't count toward the IRS limit; check your own contributions
-  // for the years you'd be contributing.
+  // Employer money and IRA/HSA money don't count toward the deferral limit; check your
+  // own workplace-plan contributions for the years you'd be contributing.
   const contributingUntil = isTarget ? i.targetAge : fireAge ?? i.retirementAge;
   const contributingMonths = Math.max(0, Math.round((contributingUntil - i.age) * 12));
   const over = firstAgeOverLimit({ age: i.age, employeeSchedule: schedule.employee.subarray(0, contributingMonths) });
 
   // Mega Backdoor Roth: after-tax money must fit under the annual-additions limit
-  // with the basic deferrals and the match. Room is shown for the first year.
+  // with the basic deferrals and all employer money. Room is shown for the first year.
   const mega = options.afterTaxAmount > 0;
   const firstYear = (s) => annualTotals(s.subarray(0, 12))[0] ?? 0;
+  const employerSchedule = schedule.match.map((m, n) => m + schedule.nonelective[n]);
   const megaRoom = i.megaBackdoor
-    ? afterTaxRoom({ employee: firstYear(schedule.employee), match: firstYear(schedule.match) })
+    ? afterTaxRoom({ employee: firstYear(schedule.employee), match: firstYear(employerSchedule) })
     : null;
   const overAdditions = mega
     ? firstAgeOverAdditionsLimit({
         age: i.age,
         employeeSchedule: schedule.employee,
-        matchSchedule: schedule.match,
+        matchSchedule: employerSchedule,
         afterTaxSchedule: schedule.afterTax.subarray(0, contributingMonths),
       })
     : null;
@@ -101,7 +110,9 @@ export function computeScenario(i) {
     unreachable: false,
     isTarget, fire, requiredAt, coastNow, alreadyCoast, amount, schedule, monthlyContribution,
     matchMonthly: schedule.match[0] ?? 0,
+    employerMonthly: schedule.nonelective[0] ?? 0,
     megaMonthly: schedule.afterTax[0] ?? 0,
+    otherMonthly: schedule.other[0] ?? 0,
     params, coastAge, fireAge,
     coastMonth: coastAge === null ? null : Math.round((coastAge - i.age) * 12),
     over, megaRoom, overAdditions, rothShare,

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { computeScenario, sensitivity, afterTaxAmountOf, scheduleOptions, rothShareAt } from "../coastfire-calculator/scenario.js";
+import { computeScenario, sensitivity, afterTaxAmountOf, otherAmountOf, scheduleOptions, rothShareAt } from "../coastfire-calculator/scenario.js";
 import { requiredBalance } from "../coastfire-calculator/retirement.js";
 import { contributionSchedule, balanceWithContrib } from "../coastfire-calculator/calc.js";
 
@@ -117,12 +117,27 @@ describe("afterTaxAmountOf", () => {
 });
 
 describe("scheduleOptions", () => {
-  it("collects the schedule inputs, with the after-tax amount", () => {
-    const i = { ...base, salary: 120_000, raise: 0.02, matchRate: 0.5, matchCap: 0.06, megaBackdoor: true, megaContribution: 800 };
-    assert.deepEqual(scheduleOptions(i), { unit: "usd", afterTaxAmount: 800, salary: 120_000, raise: 0.02, matchRate: 0.5, matchCap: 0.06 });
+  it("collects the schedule inputs, with the after-tax, other-account and employer amounts", () => {
+    const i = { ...base, salary: 120_000, raise: 0.02, matchRate: 0.5, matchCap: 0.06, megaBackdoor: true, megaContribution: 800, otherContribution: 300, employerRate: 0.03 };
+    assert.deepEqual(scheduleOptions(i), {
+      unit: "usd", afterTaxAmount: 800, otherAmount: 300, salary: 120_000, raise: 0.02, matchRate: 0.5, matchCap: 0.06, employerRate: 0.03,
+    });
   });
-  it("has no after-tax amount without the option", () => {
+  it("has no after-tax, other-account or employer amount by default", () => {
     assert.equal(scheduleOptions(base).afterTaxAmount, 0);
+    assert.equal(scheduleOptions(base).otherAmount, 0);
+    assert.equal(scheduleOptions(base).employerRate, 0);
+  });
+});
+
+describe("otherAmountOf", () => {
+  it("is the IRA/HSA contribution", () => {
+    assert.equal(otherAmountOf({ otherContribution: 250 }), 250);
+  });
+  it("is 0 for a missing, blank or negative amount", () => {
+    assert.equal(otherAmountOf({}), 0);
+    assert.equal(otherAmountOf({ otherContribution: NaN }), 0);
+    assert.equal(otherAmountOf({ otherContribution: -5 }), 0);
   });
 });
 
@@ -239,5 +254,72 @@ describe("computeScenario (Mega Backdoor Roth)", () => {
     const [low, mid, high] = sensitivity(mega);
     assert.equal(mid.fireAge, s.fireAge);
     assert.ok(low.fireAge > mid.fireAge && mid.fireAge > high.fireAge);
+  });
+});
+
+describe("computeScenario (IRA/HSA and other accounts)", () => {
+  const plain = computeScenario(base);
+  const withOther = { ...base, otherContribution: 300 };
+  const s = computeScenario(withOther);
+  it("adds the other-account money on top of the workplace contribution", () => {
+    assert.equal(s.monthlyContribution, 500);
+    assert.equal(s.otherMonthly, 300);
+    assert.equal(s.schedule.other[0], 300);
+    assert.equal(s.schedule.total[0], 800);
+    assert.ok(s.fireAge < plain.fireAge);
+  });
+  it("is never matched", () => {
+    const matched = { ...base, salary: 120_000, matchRate: 1, matchCap: 0.1 };
+    assert.equal(computeScenario({ ...matched, otherContribution: 2_000 }).matchMonthly, computeScenario(matched).matchMonthly);
+    assert.equal(computeScenario({ ...matched, contribution: 0, otherContribution: 2_000 }).matchMonthly, 0);
+  });
+  it("does not count toward the workplace deferral limit", () => {
+    assert.equal(computeScenario({ ...base, contribution: 2_000, otherContribution: 1_000 }).over, null);
+    assert.notEqual(computeScenario({ ...base, contribution: 3_000 }).over, null);
+  });
+  it("does not use up Mega Backdoor Roth room", () => {
+    const mega = { ...base, megaBackdoor: true, megaContribution: 0 };
+    assert.equal(computeScenario({ ...mega, otherContribution: 1_000 }).megaRoom, computeScenario(mega).megaRoom);
+  });
+  it("uses percent of salary like the other contributions", () => {
+    const p = computeScenario({ ...base, contributionUnit: "pct", contribution: 5, otherContribution: 2, salary: 120_000 });
+    assert.ok(Math.abs(p.otherMonthly - 200) < 1e-9);
+  });
+  it("in target mode is held fixed and lowers the workplace contribution needed", () => {
+    const target = computeScenario({ ...withOther, mode: "target" });
+    const plainTarget = computeScenario({ ...base, mode: "target" });
+    assert.ok(Math.abs(target.amount - (plainTarget.amount - 300)) < 0.02);
+    assert.equal(target.otherMonthly, 300);
+  });
+});
+
+describe("computeScenario (employer contribution)", () => {
+  const employer = { ...base, salary: 120_000, employerRate: 0.05 }; // $500/mo
+  it("is paid without any employee contribution", () => {
+    const s = computeScenario({ ...employer, contribution: 0 });
+    assert.ok(Math.abs(s.employerMonthly - 500) < 1e-9);
+    assert.equal(s.matchMonthly, 0);
+    assert.ok(Math.abs(s.schedule.total[0] - 500) < 1e-9);
+    const same = computeScenario({ ...base, contribution: 500 });
+    assert.ok(Math.abs(s.fireAge - same.fireAge) < 1e-9);
+  });
+  it("adds to the match and your own contribution", () => {
+    const s = computeScenario({ ...employer, matchRate: 0.5, matchCap: 0.06 });
+    assert.ok(Math.abs(s.schedule.total[0] - (500 + 250 + 500)) < 1e-9);
+  });
+  it("needs a salary", () => {
+    assert.equal(computeScenario({ ...employer, salary: NaN }).employerMonthly, 0);
+  });
+  it("does not count toward the deferral limit but uses Mega Backdoor Roth room", () => {
+    const s = computeScenario({ ...employer, contribution: 2_000, megaBackdoor: true, megaContribution: 0 });
+    assert.equal(s.over, null);
+    assert.ok(Math.abs(s.megaRoom - (72_000 - 24_000 - 6_000)) < 1e-6);
+    const big = computeScenario({ ...employer, contribution: 2_000, megaBackdoor: true, megaContribution: 3_600 });
+    assert.ok(Math.abs(big.overAdditions.room - 42_000) < 1e-6);
+  });
+  it("in target mode lowers the contribution needed, to 0 when it is enough", () => {
+    const plainTarget = computeScenario({ ...base, mode: "target" });
+    assert.ok(computeScenario({ ...employer, mode: "target" }).amount < plainTarget.amount);
+    assert.equal(computeScenario({ ...employer, mode: "target", employerRate: 0.5 }).amount, 0);
   });
 });

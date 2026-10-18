@@ -10,20 +10,20 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=4b8d7eb0c0";
+} from "./calc.js?v=a26466d225";
 import {
   requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   earlyAccessGuidance,
-} from "./retirement.js?v=4b8d7eb0c0";
-import { IRS_LIMITS } from "./limits.js?v=4b8d7eb0c0";
-import { computeScenario, sensitivity } from "./scenario.js?v=4b8d7eb0c0";
-import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=4b8d7eb0c0";
-import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=4b8d7eb0c0";
-import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=4b8d7eb0c0";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=4b8d7eb0c0";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=4b8d7eb0c0";
+} from "./retirement.js?v=a26466d225";
+import { IRS_LIMITS } from "./limits.js?v=a26466d225";
+import { computeScenario, sensitivity } from "./scenario.js?v=a26466d225";
+import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=a26466d225";
+import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=a26466d225";
+import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=a26466d225";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=a26466d225";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=a26466d225";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -83,7 +83,7 @@ $("fire").addEventListener("input", () => {
 });
 
 // Switching $ <-> % converts the amounts using salary (or falls back to a typical value;
-// 0 for the Mega Backdoor Roth amount).
+// 0 for the Mega Backdoor Roth and other-account amounts).
 let lastUnit = form.elements.contributionUnit.value;
 for (const radio of form.elements.contributionUnit) {
   radio.addEventListener("change", () => {
@@ -95,6 +95,7 @@ for (const radio of form.elements.contributionUnit) {
     };
     convert("contribution", DEFAULT_CONTRIBUTION[to]);
     convert("megaContribution", 0);
+    convert("otherContribution", 0);
     lastUnit = to;
   });
 }
@@ -115,7 +116,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 // ---------- Saved values ----------
 
 // Form fields remembered in localStorage, by name.
-const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility", "filingStatus", "stateTax", "rothShare", "ssEarnings", "ssStartAge", "megaBackdoor", "megaContribution"];
+const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility", "filingStatus", "stateTax", "rothShare", "ssEarnings", "ssStartAge", "megaBackdoor", "megaContribution", "otherContribution", "employerContribution"];
 const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], megaBackdoor: ["off", "on"], returnModel: ["fixed", "montecarlo", "historical"], filingStatus: FILING_STATUSES.map((s) => s.id), portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
 
 // Checkboxes are saved as "on" / "off".
@@ -251,9 +252,11 @@ function readInputs() {
     contributionUnit: form.elements.contributionUnit.value,
     megaBackdoor: $("megaBackdoor").checked,
     megaContribution: num("megaContribution"),
+    otherContribution: num("otherContribution"),
     salary: num("salary"),
     matchRate: numOr0("matchRate") / 100,
     matchCap: numOr0("matchCap") / 100,
+    employerRate: numOr0("employerContribution") / 100,
     raise: numOr0("raise") / 100,
     retirementAge: num("retirementAge"),
     targetAge: num("targetAge"),
@@ -290,9 +293,12 @@ function validate(i) {
   }
   check("megaContribution", !i.megaBackdoor || (Number.isFinite(i.megaContribution) && i.megaContribution >= 0),
     "Enter a Mega Backdoor Roth contribution (0 or more).");
+  check("otherContribution", Number.isFinite(i.otherContribution) && i.otherContribution >= 0,
+    "Enter an IRA, HSA and other accounts contribution (0 or more).");
   check("salary", i.contributionUnit !== "pct" || i.salary > 0, "Enter your annual salary to contribute a percentage of it.");
   check("matchRate", i.matchRate >= 0 && i.matchRate <= 1, "Enter an employer match from 0% to 100%.");
   check("matchCap", i.matchCap >= 0 && i.matchCap <= 1, "Enter a match limit from 0% to 100% of salary.");
+  check("employerContribution", i.employerRate >= 0 && i.employerRate <= 1, "Enter an employer contribution from 0% to 100% of salary.");
   check("raise", i.raise >= -0.05 && i.raise <= 0.1, "Enter yearly raises from -5% to 10%.");
   check("spending", Number.isFinite(i.spending) && i.spending > 0, "Enter your expected annual spending in retirement.");
   check("swr", Number.isFinite(i.swr) && i.swr > 0, "Enter a withdrawal rate above 0%.");
@@ -506,12 +512,14 @@ function update() {
   $("contributionHint").textContent = mega ? CONTRIBUTION_HINT_MEGA : CONTRIBUTION_HINT;
   $("megaField").hidden = !mega;
   $("megaLabel").textContent = pctUnit ? "Mega Backdoor Roth (after-tax, % of salary)" : "Mega Backdoor Roth (after-tax) per month";
-  for (const id of ["contributionAffix", "megaAffix"]) {
+  $("otherLabel").textContent = pctUnit ? "IRA, HSA and other accounts (% of salary)" : "IRA, HSA and other accounts per month";
+  for (const id of ["contributionAffix", "megaAffix", "otherAffix"]) {
     const affix = $(id);
     if (pctUnit) { delete affix.dataset.prefix; affix.dataset.suffix = "%"; }
     else { delete affix.dataset.suffix; affix.dataset.prefix = "$"; }
   }
   $("matchHint").hidden = !((i.matchRate > 0 || i.matchCap > 0) && !(i.salary > 0));
+  $("employerHint").hidden = !(i.employerRate > 0 && !(i.salary > 0));
 
   const problems = validate(i);
   $("error").hidden = problems.length === 0;
@@ -525,27 +533,33 @@ function update() {
     cancelRisk();
     return;
   }
-  const { fire, requiredAt, coastNow, alreadyCoast, amount, schedule, monthlyContribution, matchMonthly, megaMonthly, params, coastAge, fireAge, coastMonth, over, megaRoom, overAdditions, rothShare } = scenario;
+  const { fire, requiredAt, coastNow, alreadyCoast, amount, schedule, monthlyContribution, matchMonthly, employerMonthly, megaMonthly, otherMonthly, params, coastAge, fireAge, coastMonth, over, megaRoom, overAdditions, rothShare } = scenario;
   const amountText = (value, monthly) => (pctUnit
     ? `${amountFormat.format(value)}% of salary (${money.format(monthly)}/mo)`
     : `${money.format(monthly)}/mo`);
   const megaText = amountText(i.megaContribution, megaMonthly);
+  const otherText = amountText(i.otherContribution, otherMonthly);
   const hasMega = megaMonthly > 0;
-  const contributionText = hasMega
+  const hasOther = otherMonthly > 0;
+  const contributionText = (hasMega
     ? `${amountText(amount, monthlyContribution)} basic + ${megaText} Mega Backdoor Roth`
-    : amountText(amount, monthlyContribution);
+    : amountText(amount, monthlyContribution))
+    + (hasOther ? ` + ${otherText} IRA/HSA` : "");
+  // Employer money on top of yours: the match, then any contribution that doesn't depend on yours.
+  const employerText = [matchMonthly > 0 && `${money.format(matchMonthly)}/mo match`, employerMonthly > 0 && `${money.format(employerMonthly)}/mo employer contribution`]
+    .filter(Boolean).join(" and ");
 
   $("limitWarning").hidden = !over;
   if (over) {
-    $("limitWarning").textContent = `Your ${mega ? "basic " : ""}contributions reach ${money.format(over.annual)}/yr at age ${over.age}, above the ${IRS_LIMITS.year} workplace-plan limit (401(k), 403(b), 457(b), TSP) of ${money.format(over.limit)}/yr for that age. If part of that goes to an IRA or HSA, which have their own limits, you may be fine; otherwise consider ${mega ? "moving the rest to Mega Backdoor Roth contributions, " : ""}an IRA, HSA or taxable account for the rest.`;
+    $("limitWarning").textContent = `Your ${mega ? "basic " : ""}contributions reach ${money.format(over.annual)}/yr at age ${over.age}, above the ${IRS_LIMITS.year} workplace-plan limit (401(k), 403(b), 457(b), TSP) of ${money.format(over.limit)}/yr for that age. Consider ${mega ? "moving the rest to Mega Backdoor Roth contributions, " : ""}an IRA, HSA or taxable account for the rest (enter IRA and HSA money under IRA, HSA and other accounts).`;
   }
   $("megaWarning").hidden = !overAdditions;
   if (overAdditions) {
-    $("megaWarning").textContent = `Your Mega Backdoor Roth contributions reach ${money.format(overAdditions.afterTax)}/yr at age ${overAdditions.age}, above the ${money.format(overAdditions.room)}/yr left that year under the ${IRS_LIMITS.year} limit of ${money.format(overAdditions.limit)}/yr on total contributions (basic, match and after-tax).`;
+    $("megaWarning").textContent = `Your Mega Backdoor Roth contributions reach ${money.format(overAdditions.afterTax)}/yr at age ${overAdditions.age}, above the ${money.format(overAdditions.room)}/yr left that year under the ${IRS_LIMITS.year} limit of ${money.format(overAdditions.limit)}/yr on total contributions (basic, employer and after-tax).`;
   }
   $("megaHint").textContent = megaRoom === null ? "" : megaRoom > 0
-    ? `Room this year: ${money.format(megaRoom)}/yr (${money.format(megaRoom / 12)}/mo) under the ${IRS_LIMITS.year} ${money.format(IRS_LIMITS.annualAdditions)} limit, after your basic contribution and match. Not matched by your employer.`
-    : `No room this year: your basic contribution and match already use the ${IRS_LIMITS.year} ${money.format(IRS_LIMITS.annualAdditions)} limit.`;
+    ? `Room this year: ${money.format(megaRoom)}/yr (${money.format(megaRoom / 12)}/mo) under the ${IRS_LIMITS.year} ${money.format(IRS_LIMITS.annualAdditions)} limit, after your basic contribution and employer money. Not matched by your employer.`
+    : `No room this year: your basic contribution and employer money already use the ${IRS_LIMITS.year} ${money.format(IRS_LIMITS.annualAdditions)} limit.`;
 
   const coastCard = alreadyCoast
     ? { label: "CoastFIRE", value: "Reached ✓", good: true, sub: `You could stop contributing today and still retire at ${i.retirementAge}.` }
@@ -554,23 +568,29 @@ function update() {
       : { label: "CoastFIRE age", value: `Not by ${i.retirementAge}`, sub: "Contributions aren't enough to coast before retirement." };
 
   if (isTarget) {
+    // What reaches the goal without the solved contribution: the fixed amounts and employer money.
+    const fixed = ["Your current balance", hasMega && "Mega Backdoor Roth", hasOther && "IRA/HSA contributions", employerMonthly > 0 && "employer contribution"]
+      .filter(Boolean);
+    const fixedText = fixed.join(", ").replace(/, ([^,]*)$/, " and $1");
     setCard("cardPrimary", {
       label: contributionLabel({ mega, pctUnit, needed: true }),
       value: pctUnit ? `${amountFormat.format(amount)}%` : money.format(amount),
       unit: pctUnit ? "of salary" : "/ mo",
       good: amount === 0,
       sub: amount === 0
-        ? `Your current balance${hasMega ? " and Mega Backdoor Roth" : ""} alone reach${hasMega ? "" : "es"} your FIRE number by ${i.targetAge}${fireAge < i.targetAge - 1e-9 ? ` (on track for ${formatAge(fireAge)})` : ""}.`
+        ? `${fixedText} alone reach${fixed.length > 1 ? "" : "es"} your FIRE number by ${i.targetAge}${fireAge < i.targetAge - 1e-9 ? ` (on track for ${formatAge(fireAge)})` : ""}.`
         : [`To fully retire at ${i.targetAge}.`,
             pctUnit ? `That's ${money.format(monthlyContribution)}/mo to start.` : "",
             matchMonthly > 0 ? `Plus ${money.format(matchMonthly)}/mo employer match.` : "",
+            employerMonthly > 0 ? `Plus ${money.format(employerMonthly)}/mo employer contribution.` : "",
             hasMega ? `Plus your ${megaText} Mega Backdoor Roth.` : "",
+            hasOther ? `Plus your ${otherText} IRA/HSA.` : "",
             i.raise !== 0 ? `Grows ${pct.format(i.raise)}/yr.` : ""].filter(Boolean).join(" "),
     });
   } else {
     setCard("cardPrimary", fireAge !== null
       ? { label: "Full retirement age", ...cardAge(fireAge), good: fireAge === i.age,
-          sub: fireAge === i.age ? "You've already hit your FIRE number." : `If you keep contributing ${contributionText}${matchMonthly > 0 ? ` plus ${money.format(matchMonthly)}/mo match` : ""}.` }
+          sub: fireAge === i.age ? "You've already hit your FIRE number." : `If you keep contributing ${contributionText}${employerText ? ` plus ${employerText}` : ""}.` }
       : { label: "Full retirement age", value: `Not by ${DEFAULT_MAX_AGE}`, sub: "Try a higher contribution or lower spending." });
   }
   setCard("cardSecondary", coastCard);
@@ -677,7 +697,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=4b8d7eb0c0", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=a26466d225", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;

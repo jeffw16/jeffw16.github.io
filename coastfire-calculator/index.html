@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your retirement accounts (401(k), 403(b), 457(b), TSP, IRA, HSA) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=4b8d7eb0c0">
+  <link rel="stylesheet" href="style.css?v=a26466d225">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=4b8d7eb0c0"></script>
+  <script type="module" src="app.js?v=a26466d225"></script>
 </head>
 <body>
   <main class="page">
@@ -51,7 +51,7 @@
           <div class="affix" id="contributionAffix" data-prefix="$">
             <input id="contribution" name="contribution" type="text" inputmode="decimal" autocomplete="off" data-amount value="500">
           </div>
-          <p class="hint" id="contributionHint">Your own contributions across all accounts; any employer match is added from the Contributions section.</p>
+          <p class="hint" id="contributionHint">Your own contribution to a workplace plan (401(k), 403(b), 457(b), TSP), which any match is based on. Add IRA, HSA and employer money under Contributions.</p>
         </div>
 
         <div class="field" data-mode="target" hidden>
@@ -86,7 +86,7 @@
             <div class="affix" data-prefix="$">
               <input id="salary" name="salary" type="text" inputmode="decimal" autocomplete="off" data-amount value="">
             </div>
-            <p class="hint">Optional. Needed for % of salary and the employer match.</p>
+            <p class="hint">Optional. Needed for % of salary and employer contributions.</p>
           </div>
 
           <div class="field">
@@ -107,11 +107,28 @@
           </div>
 
           <div class="field">
+            <label for="employerContribution">Employer contribution</label>
+            <div class="affix" data-suffix="%">
+              <input id="employerContribution" name="employerContribution" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="0">
+            </div>
+            <p class="hint">% of salary your employer puts in whether or not you contribute, such as a nonelective, profit-sharing or government-plan contribution.</p>
+            <p class="hint" id="employerHint" hidden>Enter your salary to include the employer contribution.</p>
+          </div>
+
+          <div class="field">
             <label for="raise">Yearly raises, after inflation</label>
             <div class="affix" data-suffix="%">
               <input id="raise" name="raise" type="number" inputmode="decimal" min="-5" max="10" step="0.5" value="0">
             </div>
             <p class="hint">Your contributions grow by this much each year.</p>
+          </div>
+
+          <div class="field">
+            <label for="otherContribution" id="otherLabel">IRA, HSA and other accounts per month</label>
+            <div class="affix" id="otherAffix" data-prefix="$">
+              <input id="otherContribution" name="otherContribution" type="text" inputmode="decimal" autocomplete="off" data-amount value="0">
+            </div>
+            <p class="hint">Your own money outside the workplace plan. Not matched, and not counted toward workplace-plan limits; IRAs and HSAs have their own.</p>
           </div>
 
           <div class="field">
