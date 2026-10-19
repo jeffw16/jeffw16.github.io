@@ -5,7 +5,8 @@
 
 ### CoastFIRE calculator
 
-Finds when you can stop contributing to your 401(k) and coast to retirement ("When can I retire?"), or the
+Finds when you can stop contributing to your retirement accounts (401(k), 403(b),
+457(b), TSP, IRAs, HSAs) and coast to retirement ("When can I retire?"), or the
 contribution needed to retire by a given age ("What should I contribute?"). Inputs are remembered in your
 browser, and **Copy link** shares the exact scenario in the URL (a link with parameters defines the whole scenario).
 
@@ -13,10 +14,13 @@ Model assumptions: every amount is in today's dollars and every return is real (
 monthly, with contributions at month end. FIRE number = spending grossed up for one effective tax rate, less
 any Social Security / pension (which offsets spending dollar for dollar from its start age; retiring earlier
 needs extra to bridge the gap), divided by the safe withdrawal rate. Contributions can be dollars or a percent
-of salary, with yearly real raises and an employer match; your own contributions are checked against the 2026
-IRS limits (the match isn't). If your plan allows a **Mega Backdoor Roth**, tick the option to enter after-tax
+of salary, with yearly real raises. The main contribution is your own money in a workplace plan (401(k), 403(b),
+457(b), TSP): it alone earns the employer match and is checked against the 2026 IRS deferral limits. An optional
+employer contribution (% of salary) is paid whether or not you contribute. Money for IRAs, HSAs and other accounts
+goes in its own field: it is never matched and doesn't count toward workplace-plan limits (IRA and HSA limits
+aren't modeled), and in "What should I contribute?" it is held fixed. If your plan allows a **Mega Backdoor Roth**, tick the option to enter after-tax
 contributions separately from your basic (pre-tax / Roth) deferral: they aren't matched, don't count toward the
-deferral limit, and are checked against the 2026 $72,000 limit on total additions (basic + match + after-tax;
+deferral limit, and are checked against the 2026 $72,000 limit on total additions (basic + employer + after-tax;
 catch-up contributions excluded). The page shows the room left each year, charts the Mega Backdoor Roth part of
 the balance, and estimates its share of the balance at retirement. In "What should I contribute?" the after-tax
 amount is held fixed and only the basic contribution is solved. The 100%-of-compensation cap isn't modeled. Optionally, returns are simulated (1,000 seeded lognormal paths whose median

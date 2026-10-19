@@ -492,6 +492,53 @@ describe("contributionSchedule", () => {
   });
 });
 
+describe("contributionSchedule (other accounts and employer contributions)", () => {
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} vs ${b}`);
+  it("has no other-account or employer money by default", () => {
+    const s = contributionSchedule({ months: 3, unit: "usd", amount: 500, salary: 120_000 });
+    assert.deepEqual([...s.other, ...s.nonelective], [0, 0, 0, 0, 0, 0]);
+    assert.deepEqual([...s.total], [500, 500, 500]);
+  });
+  it("adds other-account money without matching it", () => {
+    const s = contributionSchedule({ months: 1, unit: "usd", amount: 200, otherAmount: 1_000, salary: 120_000, matchRate: 1, matchCap: 0.1 });
+    close(s.other[0], 1_000);
+    close(s.match[0], 200);
+    close(s.total[0], 1_400);
+  });
+  it("computes other-account percent contributions from salary, growing with raises", () => {
+    const { other } = contributionSchedule({ months: 13, unit: "pct", amount: 0, otherAmount: 5, salary: 120_000, raise: 0.1 });
+    close(other[0], 500);
+    close(other[12], 550);
+  });
+  it("pays the employer contribution as a share of salary, whatever the employee puts in", () => {
+    const s = contributionSchedule({ months: 13, unit: "usd", amount: 0, salary: 120_000, raise: 0.1, employerRate: 0.03 });
+    close(s.nonelective[0], 300);
+    close(s.nonelective[12], 330);
+    close(s.match[0], 0);
+    close(s.total[0], 300);
+  });
+  it("gives no employer contribution without a salary", () => {
+    const s = contributionSchedule({ months: 2, unit: "usd", amount: 500, employerRate: 0.03 });
+    assert.deepEqual([...s.nonelective], [0, 0]);
+  });
+  it("sums every part into the total", () => {
+    const s = contributionSchedule({ months: 12, unit: "usd", amount: 1_000, afterTaxAmount: 500, otherAmount: 250, salary: 120_000, matchRate: 0.5, matchCap: 0.06, employerRate: 0.02 });
+    for (let n = 0; n < 12; n++) close(s.total[n], s.employee[n] + s.match[n] + s.nonelective[n] + s.afterTax[n] + s.other[n]);
+    close(s.total[0], 1_000 + 300 + 200 + 500 + 250);
+  });
+});
+
+describe("solveEmployeeAmount (fixed other-account and employer money)", () => {
+  const args = { balance: 50_000, annualReturn: 0.07, months: 300, target: 1_000_000, unit: "usd", salary: 120_000 };
+  it("needs that much less with fixed other-account dollars", () => {
+    const plain = solveEmployeeAmount(args);
+    assert.ok(Math.abs(solveEmployeeAmount({ ...args, otherAmount: 200 }) - (plain - 200)) < 0.01);
+  });
+  it("needs nothing when the employer contribution is enough", () => {
+    assert.equal(solveEmployeeAmount({ ...args, employerRate: 0.5 }), 0);
+  });
+});
+
 describe("convertContribution", () => {
   it("converts dollars per month to percent of salary and back", () => {
     close(convertContribution({ amount: 600, from: "usd", to: "pct", salary: 120_000 }), 6);

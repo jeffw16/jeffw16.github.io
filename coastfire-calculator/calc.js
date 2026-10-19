@@ -164,21 +164,27 @@ export function requiredMonthlyContribution({ age, balance, annualReturn, fire, 
 export const DEFAULT_CONTRIBUTION = Object.freeze({ usd: 500, pct: 6 });
 
 /**
- * Monthly contributions for `months` months, as { employee, match, afterTax,
- * total } Float64Arrays. `unit` is "usd" (amounts are dollars per month) or
- * "pct" (amounts are percents of salary, e.g. 6 for 6%). `amount` is the
- * employee's basic (pre-tax / Roth) deferral and `afterTaxAmount` an optional
- * after-tax (Mega Backdoor Roth) contribution in the same unit. `raise` is the
- * yearly real raise as a fraction; it steps up each 12 months and applies to
- * dollar contributions too. The match is `matchRate` of the basic contribution
- * up to `matchCap` (fraction) of salary; after-tax money isn't matched. With
- * no salary there is no match and a percent contribution is 0.
+ * Monthly contributions for `months` months, as { employee, match,
+ * nonelective, afterTax, other, total } Float64Arrays. `unit` is "usd"
+ * (amounts are dollars per month) or "pct" (amounts are percents of salary,
+ * e.g. 6 for 6%). `amount` is the employee's basic (pre-tax / Roth) deferral
+ * to a workplace plan, `afterTaxAmount` an optional after-tax (Mega Backdoor
+ * Roth) contribution and `otherAmount` optional money for accounts outside the
+ * workplace plan (IRAs, HSAs), all in the same unit. `raise` is the yearly
+ * real raise as a fraction; it steps up each 12 months and applies to dollar
+ * contributions too. The match is `matchRate` of the basic contribution up to
+ * `matchCap` (fraction) of salary; after-tax and other-account money isn't
+ * matched. `employerRate` (fraction of salary) is an employer contribution
+ * paid whatever the employee contributes. With no salary there is no employer
+ * money and a percent contribution is 0.
  */
-export function contributionSchedule({ months, unit, amount, afterTaxAmount = 0, salary, raise = 0, matchRate = 0, matchCap = 0 }) {
+export function contributionSchedule({ months, unit, amount, afterTaxAmount = 0, otherAmount = 0, salary, raise = 0, matchRate = 0, matchCap = 0, employerRate = 0 }) {
   const count = Math.max(0, Math.round(months));
   const employee = new Float64Array(count);
   const match = new Float64Array(count);
+  const nonelective = new Float64Array(count);
   const afterTax = new Float64Array(count);
+  const other = new Float64Array(count);
   const total = new Float64Array(count);
   const hasSalary = salary > 0;
   const monthly = (value, growth) => (unit === "pct" ? (hasSalary ? ((value / 100) * salary * growth) / 12 : 0) : value * growth);
@@ -187,10 +193,12 @@ export function contributionSchedule({ months, unit, amount, afterTaxAmount = 0,
     const own = monthly(amount, growth);
     employee[n] = own;
     match[n] = hasSalary ? matchRate * Math.min(own, (matchCap * salary * growth) / 12) : 0;
+    nonelective[n] = hasSalary ? (employerRate * salary * growth) / 12 : 0;
     afterTax[n] = monthly(afterTaxAmount, growth);
-    total[n] = own + match[n] + afterTax[n];
+    other[n] = monthly(otherAmount, growth);
+    total[n] = own + match[n] + nonelective[n] + afterTax[n] + other[n];
   }
-  return { employee, match, afterTax, total };
+  return { employee, match, nonelective, afterTax, other, total };
 }
 
 /**
@@ -206,17 +214,17 @@ export function convertContribution({ amount, from, to, salary }) {
 /**
  * Smallest employee (basic) contribution, in the schedule's unit, that grows
  * the balance to `target` after `months` months, on top of a fixed
- * `afterTaxAmount`, found by bisection to half a cent (or half a hundredth
- * of a percent point). 0 if the balance (and any after-tax money) alone gets
+ * `afterTaxAmount`, `otherAmount` and employer contribution, found by bisection to half a cent (or half a hundredth
+ * of a percent point). 0 if the balance (and the fixed contributions) alone gets
  * there; null if months <= 0, a percent is asked for without salary, or the
  * target can't be reached.
  */
-export function solveEmployeeAmount({ balance, annualReturn, months, target, unit, afterTaxAmount = 0, salary, raise = 0, matchRate = 0, matchCap = 0 }) {
+export function solveEmployeeAmount({ balance, annualReturn, months, target, unit, afterTaxAmount = 0, otherAmount = 0, salary, raise = 0, matchRate = 0, matchCap = 0, employerRate = 0 }) {
   if (!(months > 0)) return null;
   if (unit === "pct" && !(salary > 0)) return null;
   const rm = monthlyRate(annualReturn);
   const reaches = (amount) => {
-    const { total } = contributionSchedule({ months, unit, amount, afterTaxAmount, salary, raise, matchRate, matchCap });
+    const { total } = contributionSchedule({ months, unit, amount, afterTaxAmount, otherAmount, salary, raise, matchRate, matchCap, employerRate });
     return isCoastReached(simulate({ balance, contributions: total, monthlyReturns: rm })[Math.round(months)], target);
   };
   if (reaches(0)) return 0;

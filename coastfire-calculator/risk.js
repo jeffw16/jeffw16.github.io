@@ -1,8 +1,8 @@
 // "With market ups and downs": what the Monte Carlo paths say about a scenario.
 // computeRisk is pure; createRiskRunner adds a small cache of the (expensive)
 // random paths so editing contributions doesn't regenerate them.
-import { DEFAULT_MAX_AGE, contributionSchedule, coastPathSchedule } from "./calc.js?v=8c0d1dc4d1";
-import { computeScenario, scheduleOptions } from "./scenario.js?v=8c0d1dc4d1";
+import { DEFAULT_MAX_AGE, contributionSchedule, coastPathSchedule } from "./calc.js?v=a26466d225";
+import { computeScenario, scheduleOptions } from "./scenario.js?v=a26466d225";
 import {
   monthlyReturnPaths,
   balancePaths,
@@ -12,9 +12,9 @@ import {
   coastSuccessRate,
   coastConfidenceAge,
   contributionForConfidence,
-} from "./montecarlo.js?v=8c0d1dc4d1";
-import { formatAge, formatAgeOrNote } from "./format.js?v=8c0d1dc4d1";
-import { HISTORY, seriesFor, historicalPaths } from "./history.js?v=8c0d1dc4d1";
+} from "./montecarlo.js?v=a26466d225";
+import { formatAge, formatAgeOrNote } from "./format.js?v=a26466d225";
+import { HISTORY, seriesFor, historicalPaths } from "./history.js?v=a26466d225";
 
 export const PATHS = 1000;
 export const SEED = 1;
@@ -119,9 +119,10 @@ export function describeRisk(i, scenario, risk) {
   const edgeNote = " Coasting exactly on the line works only about half the time — markets don't move in straight lines.";
 
   if (scenario.isTarget) {
-    // With a Mega Backdoor Roth the after-tax amount is held fixed; only the basic contribution is solved.
+    // Mega Backdoor Roth and IRA/HSA amounts are held fixed; only the basic contribution is solved.
     const mega = scenario.megaMonthly > 0;
-    const megaNote = mega ? `, plus ${amountText(i.megaContribution)} Mega Backdoor Roth` : "";
+    const megaNote = (mega ? `, plus ${amountText(i.megaContribution)} Mega Backdoor Roth` : "")
+      + (scenario.otherMonthly > 0 ? `, plus ${amountText(i.otherContribution)} IRA/HSA` : "");
     return {
       rows: [
         {

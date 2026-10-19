@@ -4,17 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
-  <meta name="description" content="Find out when you can stop contributing to your 401(k) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=8c0d1dc4d1">
+  <meta name="description" content="Find out when you can stop contributing to your retirement accounts (401(k), 403(b), 457(b), TSP, IRA, HSA) and coast to retirement, or how much you need to contribute to retire at a given age.">
+  <link rel="stylesheet" href="style.css?v=a26466d225">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=8c0d1dc4d1"></script>
+  <script type="module" src="app.js?v=a26466d225"></script>
 </head>
 <body>
   <main class="page">
     <header class="page-header">
       <h1>CoastFIRE Calculator</h1>
       <p class="lede">
-        <strong>CoastFIRE</strong> is the point where your 401(k) is big enough that, with no further
+        <strong>CoastFIRE</strong> is the point where your retirement savings are big enough that, with no further
         contributions, compound growth alone carries it to your full retirement number.
       </p>
     </header>
@@ -39,10 +39,11 @@
         </div>
 
         <div class="field">
-          <label for="balance">Current 401(k) balance</label>
+          <label for="balance">Current retirement balance</label>
           <div class="affix" data-prefix="$">
             <input id="balance" name="balance" type="text" inputmode="decimal" autocomplete="off" data-amount value="50,000" required>
           </div>
+          <p class="hint">All your retirement accounts together: 401(k), 403(b), 457(b), TSP, IRAs, HSAs.</p>
         </div>
 
         <div class="field" data-mode="contribution">
@@ -50,7 +51,7 @@
           <div class="affix" id="contributionAffix" data-prefix="$">
             <input id="contribution" name="contribution" type="text" inputmode="decimal" autocomplete="off" data-amount value="500">
           </div>
-          <p class="hint" id="contributionHint">Your own contribution; any employer match is added from the Contributions section.</p>
+          <p class="hint" id="contributionHint">Your own contribution to a workplace plan (401(k), 403(b), 457(b), TSP), which any match is based on. Add IRA, HSA and employer money under Contributions.</p>
         </div>
 
         <div class="field" data-mode="target" hidden>
@@ -85,7 +86,7 @@
             <div class="affix" data-prefix="$">
               <input id="salary" name="salary" type="text" inputmode="decimal" autocomplete="off" data-amount value="">
             </div>
-            <p class="hint">Optional. Needed for % of salary and the employer match.</p>
+            <p class="hint">Optional. Needed for % of salary and employer contributions.</p>
           </div>
 
           <div class="field">
@@ -106,6 +107,15 @@
           </div>
 
           <div class="field">
+            <label for="employerContribution">Employer contribution</label>
+            <div class="affix" data-suffix="%">
+              <input id="employerContribution" name="employerContribution" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="0">
+            </div>
+            <p class="hint">% of salary your employer puts in whether or not you contribute, such as a nonelective, profit-sharing or government-plan contribution.</p>
+            <p class="hint" id="employerHint" hidden>Enter your salary to include the employer contribution.</p>
+          </div>
+
+          <div class="field">
             <label for="raise">Yearly raises, after inflation</label>
             <div class="affix" data-suffix="%">
               <input id="raise" name="raise" type="number" inputmode="decimal" min="-5" max="10" step="0.5" value="0">
@@ -114,12 +124,20 @@
           </div>
 
           <div class="field">
+            <label for="otherContribution" id="otherLabel">IRA, HSA and other accounts per month</label>
+            <div class="affix" id="otherAffix" data-prefix="$">
+              <input id="otherContribution" name="otherContribution" type="text" inputmode="decimal" autocomplete="off" data-amount value="0">
+            </div>
+            <p class="hint">Your own money outside the workplace plan. Not matched, and not counted toward workplace-plan limits; IRAs and HSAs have their own.</p>
+          </div>
+
+          <div class="field">
             <div class="check-row">
               <input id="megaBackdoor" name="megaBackdoor" type="checkbox">
               <label for="megaBackdoor">My plan allows a Mega Backdoor Roth</label>
               <button type="button" class="info" popovertarget="tip-mega" aria-label="About the Mega Backdoor Roth">i</button>
             </div>
-            <p class="hint">After-tax contributions converted to Roth, on top of your basic 401(k) contribution.</p>
+            <p class="hint">After-tax contributions converted to Roth, on top of your basic workplace-plan contribution.</p>
           </div>
 
           <div class="field" id="megaField" hidden>
@@ -155,7 +173,7 @@
             <div class="affix" data-suffix="%">
               <input id="taxRate" name="taxRate" type="number" inputmode="decimal" min="0" max="60" step="0.1" value="10">
             </div>
-            <p class="hint">401(k) withdrawals are taxed as income. Use 0% if it's all Roth.</p>
+            <p class="hint">Pre-tax (traditional) withdrawals are taxed as income. Use 0% if it's all Roth.</p>
             <p class="hint tax-estimate" id="taxEstimateText" aria-live="polite"></p>
             <div class="tax-actions">
               <button type="button" class="link-btn" id="useTaxEstimate">Use estimate</button>
@@ -168,7 +186,7 @@
             <div class="affix" data-prefix="$">
               <input id="benefit" name="benefit" type="text" inputmode="decimal" autocomplete="off" data-amount value="0">
             </div>
-            <p class="hint">In today's dollars. Reduces what the 401(k) must cover once it starts.</p>
+            <p class="hint">In today's dollars. Reduces what your savings must cover once it starts.</p>
             <div class="tax-actions">
               <button type="button" class="link-btn" id="openSsModal" aria-haspopup="dialog">Estimate Social Security…</button>
             </div>
@@ -252,7 +270,7 @@
             <div class="affix" data-suffix="%">
               <input id="rothShare" name="rothShare" type="number" inputmode="decimal" min="0" max="100" step="1" value="0">
             </div>
-            <p class="hint">The part that comes from Roth money or a taxable account's contributions, which isn't taxed.</p>
+            <p class="hint">The part that comes from Roth money, HSA money spent on medical costs, or a taxable account's contributions, which isn't taxed.</p>
           </div>
 
           <dl class="tax-rows" id="taxRows"></dl>
@@ -344,9 +362,9 @@
         <p id="megaWarning" class="note warn" role="note" hidden></p>
 
         <figure class="panel chart-panel">
-          <figcaption class="chart-title">401(k) balance by age <button type="button" class="info" popovertarget="tip-coastpath" aria-label="About the coast-path line">i</button></figcaption>
+          <figcaption class="chart-title">Retirement balance by age <button type="button" class="info" popovertarget="tip-coastpath" aria-label="About the coast-path line">i</button></figcaption>
           <div class="chart-wrap">
-            <canvas id="chart" role="img" aria-label="Chart of projected 401(k) balance by age"></canvas>
+            <canvas id="chart" role="img" aria-label="Chart of projected retirement balance by age"></canvas>
           </div>
           <p id="chartError" class="hint" role="status" hidden>The chart couldn't load, but your results above and the table below still work.</p>
           <details class="table-view">
@@ -400,11 +418,11 @@
     </div>
     <div id="tip-tax" class="tip" popover>
       <h2>Tax on withdrawals</h2>
-      <p>A single average rate applied to 401(k) withdrawals, since traditional 401(k) money is taxed as income. Spending is grossed up so you net the amount you entered. Use 0% for Roth money. The estimate below the field uses the 2025 federal brackets and standard deduction; open Fine-tune to change the filing status, add state tax or a tax-free share.</p>
+      <p>A single average rate applied to withdrawals, since pre-tax money in a traditional 401(k), 403(b), 457(b), TSP or IRA is taxed as income. Spending is grossed up so you net the amount you entered. Use 0% for Roth money (HSA money spent on medical costs is tax-free too). The estimate below the field uses the 2025 federal brackets and standard deduction; open Fine-tune to change the filing status, add state tax or a tax-free share.</p>
     </div>
     <div id="tip-bridge" class="tip" popover>
       <h2>Social Security bridge</h2>
-      <p>If you retire before Social Security or a pension starts, your 401(k) has to cover your full spending until it does. The calculator adds enough for those bridge years, then counts the benefit against spending afterward.</p>
+      <p>If you retire before Social Security or a pension starts, your savings have to cover your full spending until they do. The calculator adds enough for those bridge years, then counts the benefit against spending afterward.</p>
     </div>
     <div id="tip-mega" class="tip" popover>
       <h2>Mega Backdoor Roth</h2>

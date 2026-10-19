@@ -1,4 +1,4 @@
-// IRS 401(k) limits and checks of a contribution schedule against them.
+// IRS workplace-plan limits (401(k), 403(b), 457(b), TSP) and checks of a contribution schedule against them.
 // Pure: no DOM, no globals.
 
 // 2026 limits (IRS Notice 2025-67, as reported by several retirement-plan sources):
@@ -50,7 +50,8 @@ export function firstAgeOverLimit({ age, employeeSchedule, limits = IRS_LIMITS }
 
 /**
  * After-tax (Mega Backdoor Roth) room left in a year: the annual-additions
- * limit less the deferrals that count toward it and the employer match.
+ * limit less the deferrals that count toward it and the employer's money
+ * (`match`: the match plus any contribution that doesn't depend on yours).
  * Catch-up deferrals (anything above the base deferral limit) don't count, so
  * deferrals are capped at `limits.deferral`. Never negative.
  */
@@ -61,7 +62,8 @@ export function afterTaxRoom({ employee, match, limits = IRS_LIMITS }) {
 /**
  * First 12-month window whose after-tax contributions exceed the room left
  * under the annual-additions limit, as { age, afterTax, room, limit }, or null
- * if none does. The three schedules are monthly, start at `age` and are read
+ * if none does. `matchSchedule` is all employer money, as in afterTaxRoom.
+ * The three schedules are monthly, start at `age` and are read
  * over the after-tax schedule's length.
  */
 export function firstAgeOverAdditionsLimit({ age, employeeSchedule, matchSchedule, afterTaxSchedule, limits = IRS_LIMITS }) {
