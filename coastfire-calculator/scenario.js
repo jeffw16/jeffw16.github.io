@@ -10,9 +10,9 @@ import {
   findFireAge,
   simulate,
   monthlyRate,
-} from "./calc.js?v=b8cc2a8e5f";
-import { requiredBalanceFn } from "./retirement.js?v=b8cc2a8e5f";
-import { firstAgeOverLimit, firstAgeOverAdditionsLimit, afterTaxRoom, annualTotals } from "./limits.js?v=b8cc2a8e5f";
+} from "./calc.js?v=88058eeffc";
+import { requiredBalanceFn } from "./retirement.js?v=88058eeffc";
+import { deferralLimit, firstAgeOverLimit, firstAgeOverAdditionsLimit, afterTaxRoom, annualTotals } from "./limits.js?v=88058eeffc";
 
 /** After-tax (Mega Backdoor Roth) contribution in the schedule's unit: 0 unless the option is on. */
 export function afterTaxAmountOf(i) {
@@ -24,11 +24,20 @@ export function otherAmountOf(i) {
   return i.otherContribution > 0 ? i.otherContribution : 0;
 }
 
+/**
+ * Monthly cap on the basic contribution, by month from `age`: a twelfth of the
+ * deferral limit for the age in each 12-month window. It applies unless the
+ * Mega Backdoor Roth is on (then going over the limit is only warned about).
+ */
+export function employeeCapOf(i) {
+  return i.megaBackdoor ? null : (n) => deferralLimit(i.age + Math.floor(n / 12)) / 12;
+}
+
 /** The contributionSchedule options shared by every schedule of a scenario, except `months` and `amount`. */
 export function scheduleOptions(i) {
   return {
     unit: i.contributionUnit, afterTaxAmount: afterTaxAmountOf(i), otherAmount: otherAmountOf(i), salary: i.salary, raise: i.raise,
-    matchRate: i.matchRate, matchCap: i.matchCap, employerRate: i.employerRate > 0 ? i.employerRate : 0,
+    matchRate: i.matchRate, matchCap: i.matchCap, employerRate: i.employerRate > 0 ? i.employerRate : 0, employeeCapAt: employeeCapOf(i),
   };
 }
 
@@ -55,8 +64,10 @@ export function rothShareAt({ balance, schedule, annualReturn, months }) {
  * (megaBackdoor, megaContribution: an after-tax contribution in the same
  * unit; it and otherContribution are held fixed in target mode), the
  * retirement-need fields (spending, taxRate, swr, benefit, benefitAge),
- * annualReturn and fire. Returns { unreachable: true } when target mode has
- * no solution.
+ * annualReturn and fire. Without the Mega Backdoor Roth, the basic
+ * contribution is capped at the deferral limit and `capped` says from when.
+ * Returns { unreachable: true } when target mode has no solution, with
+ * `capped: true` when the cap is what stands in the way.
  */
 export function computeScenario(i) {
   const isTarget = i.mode === "target";
@@ -72,7 +83,7 @@ export function computeScenario(i) {
         target: requiredAt(i.targetAge),
       })
     : i.contribution;
-  if (amount === null) return { unreachable: true };
+  if (amount === null) return { unreachable: true, capped: options.employeeCapAt !== null };
 
   const schedule = scheduleOf(amount);
   const monthlyContribution = schedule.employee[0];
@@ -81,10 +92,13 @@ export function computeScenario(i) {
   const fireAge = isTarget ? findFireAge(params) ?? i.targetAge : findFireAge(params);
 
   // Employer money and IRA/HSA money don't count toward the deferral limit; check your
-  // own workplace-plan contributions for the years you'd be contributing.
+  // own workplace-plan contributions (before any cap) for the years you'd be contributing.
   const contributingUntil = isTarget ? i.targetAge : fireAge ?? i.retirementAge;
   const contributingMonths = Math.max(0, Math.round((contributingUntil - i.age) * 12));
-  const over = firstAgeOverLimit({ age: i.age, employeeSchedule: schedule.employee.subarray(0, contributingMonths) });
+  const uncapped = contributionSchedule({ ...options, employeeCapAt: null, months: contributingMonths, amount });
+  const overLimit = firstAgeOverLimit({ age: i.age, employeeSchedule: uncapped.employee });
+  const capped = options.employeeCapAt ? overLimit : null;
+  const over = options.employeeCapAt ? null : overLimit;
 
   // Mega Backdoor Roth: after-tax money must fit under the annual-additions limit
   // with the basic deferrals and all employer money. Room is shown for the first year.
@@ -115,7 +129,7 @@ export function computeScenario(i) {
     otherMonthly: schedule.other[0] ?? 0,
     params, coastAge, fireAge,
     coastMonth: coastAge === null ? null : Math.round((coastAge - i.age) * 12),
-    over, megaRoom, overAdditions, rothShare,
+    over, capped, megaRoom, overAdditions, rothShare,
   };
 }
 

@@ -1,6 +1,6 @@
 // Pure helpers for saving form values to localStorage and to shareable URLs. No DOM,
 // storage or location access: app.js reads/writes the actual storage, form and URL.
-import { groupDigits } from "./format.js?v=b8cc2a8e5f";
+import { groupDigits } from "./format.js?v=88058eeffc";
 
 export const STORAGE_KEY = "coastfire-calculator:v1";
 const VERSION = 1;

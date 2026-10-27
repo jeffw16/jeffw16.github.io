@@ -176,9 +176,11 @@ export const DEFAULT_CONTRIBUTION = Object.freeze({ usd: 500, pct: 6 });
  * `matchCap` (fraction) of salary; after-tax and other-account money isn't
  * matched. `employerRate` (fraction of salary) is an employer contribution
  * paid whatever the employee contributes. With no salary there is no employer
- * money and a percent contribution is 0.
+ * money and a percent contribution is 0. An optional `employeeCapAt(n)` gives
+ * the most the basic contribution can be in month n (dollars); the match
+ * follows the capped amount.
  */
-export function contributionSchedule({ months, unit, amount, afterTaxAmount = 0, otherAmount = 0, salary, raise = 0, matchRate = 0, matchCap = 0, employerRate = 0 }) {
+export function contributionSchedule({ months, unit, amount, afterTaxAmount = 0, otherAmount = 0, salary, raise = 0, matchRate = 0, matchCap = 0, employerRate = 0, employeeCapAt = null }) {
   const count = Math.max(0, Math.round(months));
   const employee = new Float64Array(count);
   const match = new Float64Array(count);
@@ -190,7 +192,7 @@ export function contributionSchedule({ months, unit, amount, afterTaxAmount = 0,
   const monthly = (value, growth) => (unit === "pct" ? (hasSalary ? ((value / 100) * salary * growth) / 12 : 0) : value * growth);
   for (let n = 0; n < count; n++) {
     const growth = Math.pow(1 + raise, Math.floor(n / 12));
-    const own = monthly(amount, growth);
+    const own = employeeCapAt ? Math.min(monthly(amount, growth), employeeCapAt(n)) : monthly(amount, growth);
     employee[n] = own;
     match[n] = hasSalary ? matchRate * Math.min(own, (matchCap * salary * growth) / 12) : 0;
     nonelective[n] = hasSalary ? (employerRate * salary * growth) / 12 : 0;
@@ -217,14 +219,14 @@ export function convertContribution({ amount, from, to, salary }) {
  * `afterTaxAmount`, `otherAmount` and employer contribution, found by bisection to half a cent (or half a hundredth
  * of a percent point). 0 if the balance (and the fixed contributions) alone gets
  * there; null if months <= 0, a percent is asked for without salary, or the
- * target can't be reached.
+ * target can't be reached (with `employeeCapAt`, not even at the cap).
  */
-export function solveEmployeeAmount({ balance, annualReturn, months, target, unit, afterTaxAmount = 0, otherAmount = 0, salary, raise = 0, matchRate = 0, matchCap = 0, employerRate = 0 }) {
+export function solveEmployeeAmount({ balance, annualReturn, months, target, unit, afterTaxAmount = 0, otherAmount = 0, salary, raise = 0, matchRate = 0, matchCap = 0, employerRate = 0, employeeCapAt = null }) {
   if (!(months > 0)) return null;
   if (unit === "pct" && !(salary > 0)) return null;
   const rm = monthlyRate(annualReturn);
   const reaches = (amount) => {
-    const { total } = contributionSchedule({ months, unit, amount, afterTaxAmount, otherAmount, salary, raise, matchRate, matchCap, employerRate });
+    const { total } = contributionSchedule({ months, unit, amount, afterTaxAmount, otherAmount, salary, raise, matchRate, matchCap, employerRate, employeeCapAt });
     return isCoastReached(simulate({ balance, contributions: total, monthlyReturns: rm })[Math.round(months)], target);
   };
   if (reaches(0)) return 0;

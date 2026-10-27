@@ -413,6 +413,13 @@ describe("contributionSchedule", () => {
     assert.deepEqual([...employee], [...constantSchedule(500, 24)]);
     assert.deepEqual([...total], [...employee]);
   });
+  it("caps the basic contribution by month, and matches only the capped amount", () => {
+    const capped = contributionSchedule({ ...neutral, amount: 600, salary: 120_000, matchRate: 1, matchCap: 0.1, otherAmount: 100, employeeCapAt: (n) => (n < 12 ? 400 : 700) });
+    close(capped.employee[0], 400);
+    close(capped.match[0], 400);
+    close(capped.employee[12], 600);
+    close(capped.total[0], 900);
+  });
   it("steps dollar contributions up by the raise every 12 months", () => {
     const { employee } = contributionSchedule({ ...neutral, months: 36, raise: 0.1 });
     close(employee[0], 500);
@@ -562,6 +569,10 @@ describe("DEFAULT_CONTRIBUTION", () => {
 
 describe("solveEmployeeAmount", () => {
   const p = { balance: 50_000, annualReturn: 0.07, months: 300, target: 1_000_000, unit: "usd" };
+  it("is null when even the capped contribution falls short", () => {
+    assert.equal(solveEmployeeAmount({ ...p, employeeCapAt: () => 100 }), null);
+    close(solveEmployeeAmount({ ...p, employeeCapAt: () => 10_000 }), solveEmployeeAmount(p), 1e-6);
+  });
   it("matches requiredMonthlyContribution with neutral inputs", () => {
     const expected = requiredMonthlyContribution({ ...base, fire: 1_000_000, retirementAge: 55 });
     close(solveEmployeeAmount(p), expected, 1e-4);

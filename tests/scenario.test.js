@@ -41,8 +41,25 @@ describe("computeScenario (contribution mode)", () => {
     assert.equal(poor.coastMonth, null);
     assert.equal(poor.fireAge, null);
   });
-  it("flags contributions above the IRS limit", () => {
-    assert.equal(computeScenario({ ...base, contribution: 3_000 }).over.age, 30);
+  it("caps contributions at the IRS limit and says from when", () => {
+    const capped = computeScenario({ ...base, contribution: 3_000 });
+    assert.equal(capped.over, null);
+    assert.deepEqual(capped.capped, { age: 30, annual: 36_000, limit: 24_500 });
+    assert.ok(Math.abs(capped.monthlyContribution - 24_500 / 12) < 1e-9);
+    assert.ok(Math.abs(capped.schedule.employee[20 * 12] - 32_500 / 12) < 1e-9); // catch-up from 50
+    assert.ok(Math.abs(capped.schedule.employee[30 * 12] - 35_750 / 12) < 1e-9); // super catch-up at 60
+    assert.equal(computeScenario({ ...base, contribution: 2_000 }).capped, null);
+    assert.ok(capped.fireAge > computeScenario({ ...base, contribution: 3_000, megaBackdoor: true, megaContribution: 0 }).fireAge);
+  });
+  it("only warns about contributions above the IRS limit with a Mega Backdoor Roth", () => {
+    const mega = computeScenario({ ...base, contribution: 3_000, megaBackdoor: true, megaContribution: 0 });
+    assert.equal(mega.over.age, 30);
+    assert.equal(mega.capped, null);
+    assert.equal(mega.monthlyContribution, 3_000);
+  });
+  it("matches only the capped contribution", () => {
+    const m = computeScenario({ ...base, contribution: 3_000, salary: 400_000, matchRate: 1, matchCap: 0.5 });
+    assert.ok(Math.abs(m.matchMonthly - 24_500 / 12) < 1e-9);
   });
   it("adds the employer match", () => {
     const m = computeScenario({ ...base, salary: 120_000, matchRate: 1, matchCap: 0.05 });
@@ -66,6 +83,13 @@ describe("computeScenario (target mode)", () => {
   });
   it("is unreachable when a percent contribution is requested without a salary", () => {
     assert.equal(computeScenario({ ...base, mode: "target", contributionUnit: "pct" }).unreachable, true);
+  });
+  it("is unreachable within the deferral limit, and says so, when the target needs more", () => {
+    const tight = { ...base, mode: "target", balance: 0, targetAge: 35 };
+    assert.deepEqual(computeScenario(tight), { unreachable: true, capped: true });
+    const mega = computeScenario({ ...tight, megaBackdoor: true, megaContribution: 0 });
+    assert.equal(mega.unreachable, false);
+    assert.equal(mega.over.age, 30);
   });
 });
 
@@ -120,8 +144,15 @@ describe("scheduleOptions", () => {
   it("collects the schedule inputs, with the after-tax, other-account and employer amounts", () => {
     const i = { ...base, salary: 120_000, raise: 0.02, matchRate: 0.5, matchCap: 0.06, megaBackdoor: true, megaContribution: 800, otherContribution: 300, employerRate: 0.03 };
     assert.deepEqual(scheduleOptions(i), {
-      unit: "usd", afterTaxAmount: 800, otherAmount: 300, salary: 120_000, raise: 0.02, matchRate: 0.5, matchCap: 0.06, employerRate: 0.03,
+      unit: "usd", afterTaxAmount: 800, otherAmount: 300, salary: 120_000, raise: 0.02, matchRate: 0.5, matchCap: 0.06, employerRate: 0.03, employeeCapAt: null,
     });
+  });
+  it("caps the basic contribution at a twelfth of the deferral limit for each year's age, unless the Mega Backdoor Roth is on", () => {
+    const cap = scheduleOptions({ ...base, age: 49 }).employeeCapAt;
+    assert.equal(cap(0), 24_500 / 12);
+    assert.equal(cap(11), 24_500 / 12);
+    assert.equal(cap(12), 32_500 / 12);
+    assert.equal(scheduleOptions({ ...base, megaBackdoor: true }).employeeCapAt, null);
   });
   it("has no after-tax, other-account or employer amount by default", () => {
     assert.equal(scheduleOptions(base).afterTaxAmount, 0);
@@ -274,8 +305,8 @@ describe("computeScenario (IRA/HSA and other accounts)", () => {
     assert.equal(computeScenario({ ...matched, contribution: 0, otherContribution: 2_000 }).matchMonthly, 0);
   });
   it("does not count toward the workplace deferral limit", () => {
-    assert.equal(computeScenario({ ...base, contribution: 2_000, otherContribution: 1_000 }).over, null);
-    assert.notEqual(computeScenario({ ...base, contribution: 3_000 }).over, null);
+    assert.equal(computeScenario({ ...base, contribution: 2_000, otherContribution: 1_000 }).capped, null);
+    assert.notEqual(computeScenario({ ...base, contribution: 3_000 }).capped, null);
   });
   it("does not use up Mega Backdoor Roth room", () => {
     const mega = { ...base, megaBackdoor: true, megaContribution: 0 };
