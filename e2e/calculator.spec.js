@@ -203,6 +203,37 @@ test("results and table still work when Chart.js fails to load", async ({ browse
 const unit = (page, value) => page.locator(`input[name="contributionUnit"][value="${value}"]`).check();
 
 test.describe("contributions", () => {
+  test("the unit switch comes before the first contribution field and shows in both modes", async ({ page }) => {
+    const before = await page.evaluate(() => {
+      const radio = document.querySelector('input[name="contributionUnit"]');
+      return !!(radio.compareDocumentPosition(document.getElementById("contribution")) & Node.DOCUMENT_POSITION_FOLLOWING)
+        && !document.getElementById("contributionsSection").contains(radio);
+    });
+    expect(before).toBe(true);
+    await page.locator('input[name="mode"][value="target"]').check();
+    await expect(page.locator('label:has(input[name="contributionUnit"][value="pct"])')).toBeVisible();
+  });
+
+  test("switching units never dims the risk card", async ({ page }) => {
+    await page.locator("#returnModel").selectOption("montecarlo");
+    await expect(page.locator("#riskList > div")).toHaveCount(3);
+    await expect(page.locator("#cardRisk")).not.toHaveClass(/is-busy/);
+    await page.evaluate(() => {
+      window.busySeen = false;
+      new MutationObserver(() => { if (document.getElementById("cardRisk").classList.contains("is-busy")) window.busySeen = true; })
+        .observe(document.getElementById("cardRisk"), { attributes: true, attributeFilter: ["class"] });
+    });
+    await page.locator("#salary").fill("120,000");
+    await expect(page.locator("#cardRisk")).not.toHaveClass(/is-busy/);
+    await page.evaluate(() => { window.busySeen = false; });
+    await unit(page, "pct");
+    await expect(page.locator("#contribution")).toHaveValue("5");
+    await unit(page, "usd");
+    await expect(page.locator("#contribution")).toHaveValue("500");
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => window.busySeen)).toBe(false);
+  });
+
   test("switching $ <-> % converts the amount using salary", async ({ page }) => {
     await page.locator("#salary").fill("120,000");
     await unit(page, "pct");

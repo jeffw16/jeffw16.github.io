@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your retirement accounts (401(k), 403(b), 457(b), TSP, IRA, HSA) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=a26466d225">
+  <link rel="stylesheet" href="style.css?v=b8cc2a8e5f">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=a26466d225"></script>
+  <script type="module" src="app.js?v=b8cc2a8e5f"></script>
 </head>
 <body>
   <main class="page">
@@ -46,6 +46,21 @@
           <p class="hint">All your retirement accounts together: 401(k), 403(b), 457(b), TSP, IRAs, HSAs.</p>
         </div>
 
+        <div class="field">
+          <span class="field-label" id="contributionUnitLabel">Enter contributions as</span>
+          <fieldset class="mode" aria-labelledby="contributionUnitLabel">
+            <label class="mode-option">
+              <input type="radio" name="contributionUnit" value="usd" checked>
+              <span>$ per month</span>
+            </label>
+            <label class="mode-option">
+              <input type="radio" name="contributionUnit" value="pct">
+              <span>% of salary</span>
+            </label>
+          </fieldset>
+          <p class="hint">Used for every contribution amount. % of salary needs your salary, under Contributions.</p>
+        </div>
+
         <div class="field" data-mode="contribution">
           <label for="contribution" id="contributionLabel">Monthly contribution</label>
           <div class="affix" id="contributionAffix" data-prefix="$">
@@ -68,18 +83,6 @@
 
         <details class="advanced" id="contributionsSection" open>
           <summary>Contributions</summary>
-
-          <fieldset class="mode" aria-label="Contribution unit">
-            <legend class="visually-hidden">Enter your contribution as</legend>
-            <label class="mode-option">
-              <input type="radio" name="contributionUnit" value="usd" checked>
-              <span>$ per month</span>
-            </label>
-            <label class="mode-option">
-              <input type="radio" name="contributionUnit" value="pct">
-              <span>% of salary</span>
-            </label>
-          </fieldset>
 
           <div class="field">
             <label for="salary">Annual salary</label>
