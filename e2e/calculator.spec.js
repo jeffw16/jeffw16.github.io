@@ -271,20 +271,34 @@ test.describe("contributions", () => {
     await expect(card(page, "cardPrimary")).toContainText(/\d+(\.\d+)?%/);
   });
 
-  test("warns when contributions exceed the IRS limit, in both modes", async ({ page }) => {
+  test("caps contributions at the IRS limit, in both modes", async ({ page }) => {
     const warning = page.locator("#limitWarning");
     await expect(warning).toBeHidden();
+    await page.locator("#contribution").fill("2,500");
+    const atCap = await card(page, "cardPrimary").innerText();
     await page.locator("#contribution").fill("3,000");
+    await expect(warning).toContainText("capped at the limit");
     await expect(warning).toContainText("$24,500");
+    expect(await card(page, "cardPrimary").innerText()).toBe(atCap); // both are over the cap
     await page.locator("#contribution").fill("1,000");
     await expect(warning).toBeHidden();
 
     await page.locator('input[name="mode"][value="target"]').check();
     await page.locator("#balance").fill("0");
     await page.locator("#targetAge").fill("35");
-    await expect(warning).toBeVisible();
+    await expect(page.locator("#error")).toContainText("within the 2026 workplace-plan contribution limit");
     await page.locator("#targetAge").fill("55");
+    await expect(page.locator("#error")).toBeHidden();
     await expect(warning).toBeHidden();
+  });
+
+  test("with a Mega Backdoor Roth, contributions over the IRS limit are only warned about", async ({ page }) => {
+    await page.locator("#megaBackdoor").check();
+    await page.locator("#contribution").fill("2,500");
+    const before = await card(page, "cardPrimary").innerText();
+    await page.locator("#contribution").fill("3,000");
+    await expect(page.locator("#limitWarning")).toContainText("Consider moving the rest to Mega Backdoor Roth");
+    expect(await card(page, "cardPrimary").innerText()).not.toBe(before);
   });
 
   test("raises are saved and reset", async ({ page }) => {
@@ -566,6 +580,7 @@ test.describe("simulated ups and downs", () => {
 
   test("shows the contribution for 90% confidence in target mode", async ({ page }) => {
     await page.locator('input[name="mode"][value="target"]').check();
+    await page.locator("#targetAge").fill("60"); // keeps 90% confidence under the deferral limit
     await simulate(page);
     const rows = page.locator("#riskList > div");
     await expect(rows).toHaveCount(2);
@@ -657,7 +672,9 @@ test.describe("shareable links", () => {
     await page.locator("#balance").fill("80,000");
     await page.locator("#spending").fill("60,000");
     await page.locator("#portfolio").selectOption("balanced-60-40");
+    await page.locator("#targetAge").fill("62"); // reachable within the deferral limit
     await expect.poll(() => search(page)).toContain("mode=target");
+    await expect(page.locator("#error")).toBeHidden();
     const original = {
       primary: await page.locator("#cardPrimary").innerText(),
       fire: await card(page, "cardFire").innerText(),
@@ -669,6 +686,7 @@ test.describe("shareable links", () => {
     await expect(other.locator("#age")).toHaveValue("35");
     await expect(other.locator("#balance")).toHaveValue("80,000");
     await expect(other.locator("#spending")).toHaveValue("60,000");
+    await expect(other.locator("#targetAge")).toHaveValue("62");
     await expect.poll(() => other.locator("#cardPrimary").innerText()).toBe(original.primary);
     await expect.poll(() => card(other, "cardFire").innerText()).toBe(original.fire);
     await expect.poll(() => card(other, "cardCoast").innerText()).toBe(original.coast);

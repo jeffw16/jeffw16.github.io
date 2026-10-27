@@ -10,7 +10,7 @@
 //     change in the index to match the calendar-year returns. (Oct 2025 has no CPI release, which
 //     December-to-December avoids.)
 // Rows are [year, stocks %, bonds %, inflation %] as published, rounded to two decimals.
-import { monthlyRate } from "./calc.js?v=b8cc2a8e5f";
+import { monthlyRate } from "./calc.js?v=88058eeffc";
 
 const ROWS = [
   [1928, 43.81, 0.84, -1.16],

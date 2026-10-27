@@ -61,7 +61,8 @@ describe("computeRisk (contribution mode)", () => {
 });
 
 describe("computeRisk (target mode)", () => {
-  const input = { ...base, mode: "target" };
+  // Retiring at 60 keeps the 90%-confidence contribution under the deferral limit.
+  const input = { ...base, mode: "target", targetAge: 60 };
   const scenario = computeScenario(input);
   const risk = computeRisk(input, scenario, pathsFor(0.17));
   it("asks for more than the deterministic contribution for 90% confidence", () => {
@@ -86,6 +87,12 @@ describe("computeRisk (target mode)", () => {
     const flat = computeRisk(megaInput, megaScenario, pathsFor(0, 20));
     assert.ok(Math.abs(flat.amountForConfidence - megaScenario.amount) < 0.01);
     assert.ok(Math.abs(flat.amountForConfidence - (scenario.amount - 300)) < 0.02);
+  });
+  it("can't reach 90% confidence when it would take more than the deferral limit", () => {
+    const tight = { ...base, mode: "target" };
+    assert.equal(computeRisk(tight, computeScenario(tight), pathsFor(0.17, 100)).amountForConfidence, null);
+    const mega = { ...tight, megaBackdoor: true, megaContribution: 0 };
+    assert.ok(computeRisk(mega, computeScenario(mega), pathsFor(0.17, 100)).amountForConfidence > 24_500 / 12);
   });
 });
 
@@ -135,12 +142,12 @@ describe("describeRisk", () => {
     assert.equal(rows[1].value, "Not by 65");
   });
   it("describes target mode in dollars", () => {
-    const { rows } = run({ ...base, mode: "target" });
+    const { rows } = run({ ...base, mode: "target", targetAge: 60 });
     assert.equal(rows.length, 2);
     assert.match(rows[0].label, /Contribution for 90% confidence/);
     assert.match(rows[0].value, /^\$[\d,]+\/mo$/);
-    assert.match(rows[0].note, /^vs \$1,072\/mo if returns were steady$/);
-    assert.match(rows[1].label, /by 55 with \$1,072\/mo/);
+    assert.match(rows[0].note, /^vs \$625\/mo if returns were steady$/);
+    assert.match(rows[1].label, /by 60 with \$625\/mo/);
   });
   it("describes target mode with a Mega Backdoor Roth as the basic contribution", () => {
     const { rows } = run({ ...base, mode: "target", megaBackdoor: true, megaContribution: 300 });
@@ -158,7 +165,7 @@ describe("describeRisk", () => {
     assert.equal(rows[0].value, "Not reachable");
   });
   it("describes target mode in percent of salary", () => {
-    const { rows } = run({ ...base, mode: "target", contributionUnit: "pct", salary: 120_000 });
+    const { rows } = run({ ...base, mode: "target", targetAge: 60, contributionUnit: "pct", salary: 120_000 });
     assert.match(rows[0].value, /^[\d.]+% of salary$/);
   });
 });

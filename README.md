@@ -15,7 +15,9 @@ monthly, with contributions at month end. FIRE number = spending grossed up for 
 any Social Security / pension (which offsets spending dollar for dollar from its start age; retiring earlier
 needs extra to bridge the gap), divided by the safe withdrawal rate. Contributions can be dollars or a percent
 of salary, with yearly real raises. The main contribution is your own money in a workplace plan (401(k), 403(b),
-457(b), TSP): it alone earns the employer match and is checked against the 2026 IRS deferral limits. An optional
+457(b), TSP): it alone earns the employer match and is capped at the 2026 IRS deferral limit for each year's age (catch-ups
+included; the excess isn't counted, and in "What should I contribute?" a target that needs more is unreachable). With
+the Mega Backdoor Roth on, going over the limit is only warned about. An optional
 employer contribution (% of salary) is paid whether or not you contribute. Money for IRAs, HSAs and other accounts
 goes in its own field: it is never matched and doesn't count toward workplace-plan limits (IRA and HSA limits
 aren't modeled), and in "What should I contribute?" it is held fixed. If your plan allows a **Mega Backdoor Roth**, tick the option to enter after-tax

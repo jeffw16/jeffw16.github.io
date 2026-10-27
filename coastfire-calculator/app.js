@@ -10,20 +10,20 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=b8cc2a8e5f";
+} from "./calc.js?v=88058eeffc";
 import {
   requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   earlyAccessGuidance,
-} from "./retirement.js?v=b8cc2a8e5f";
-import { IRS_LIMITS } from "./limits.js?v=b8cc2a8e5f";
-import { computeScenario, sensitivity } from "./scenario.js?v=b8cc2a8e5f";
-import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=b8cc2a8e5f";
-import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=b8cc2a8e5f";
-import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=b8cc2a8e5f";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=b8cc2a8e5f";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=b8cc2a8e5f";
+} from "./retirement.js?v=88058eeffc";
+import { IRS_LIMITS } from "./limits.js?v=88058eeffc";
+import { computeScenario, sensitivity } from "./scenario.js?v=88058eeffc";
+import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=88058eeffc";
+import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=88058eeffc";
+import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=88058eeffc";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=88058eeffc";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=88058eeffc";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -546,11 +546,13 @@ function update() {
   const scenario = computeScenario(i);
   if (scenario.unreachable) {
     $("error").hidden = false;
-    $("error").textContent = "That target can't be reached with these assumptions.";
+    $("error").textContent = scenario.capped
+      ? `That target can't be reached within the ${IRS_LIMITS.year} workplace-plan contribution limit. Add IRA, HSA or other money under Contributions, or turn on the Mega Backdoor Roth if your plan allows it.`
+      : "That target can't be reached with these assumptions.";
     cancelRisk();
     return;
   }
-  const { fire, requiredAt, coastNow, alreadyCoast, amount, schedule, monthlyContribution, matchMonthly, employerMonthly, megaMonthly, otherMonthly, params, coastAge, fireAge, coastMonth, over, megaRoom, overAdditions, rothShare } = scenario;
+  const { fire, requiredAt, coastNow, alreadyCoast, amount, schedule, monthlyContribution, matchMonthly, employerMonthly, megaMonthly, otherMonthly, params, coastAge, fireAge, coastMonth, over, capped, megaRoom, overAdditions, rothShare } = scenario;
   const amountText = (value, monthly) => (pctUnit
     ? `${amountFormat.format(value)}% of salary (${money.format(monthly)}/mo)`
     : `${money.format(monthly)}/mo`);
@@ -566,9 +568,11 @@ function update() {
   const employerText = [matchMonthly > 0 && `${money.format(matchMonthly)}/mo match`, employerMonthly > 0 && `${money.format(employerMonthly)}/mo employer contribution`]
     .filter(Boolean).join(" and ");
 
-  $("limitWarning").hidden = !over;
+  $("limitWarning").hidden = !(over || capped);
   if (over) {
-    $("limitWarning").textContent = `Your ${mega ? "basic " : ""}contributions reach ${money.format(over.annual)}/yr at age ${over.age}, above the ${IRS_LIMITS.year} workplace-plan limit (401(k), 403(b), 457(b), TSP) of ${money.format(over.limit)}/yr for that age. Consider ${mega ? "moving the rest to Mega Backdoor Roth contributions, " : ""}an IRA, HSA or taxable account for the rest (enter IRA and HSA money under IRA, HSA and other accounts).`;
+    $("limitWarning").textContent = `Your basic contributions reach ${money.format(over.annual)}/yr at age ${over.age}, above the ${IRS_LIMITS.year} workplace-plan limit (401(k), 403(b), 457(b), TSP) of ${money.format(over.limit)}/yr for that age. Consider moving the rest to Mega Backdoor Roth contributions, an IRA, HSA or taxable account (enter IRA and HSA money under IRA, HSA and other accounts).`;
+  } else if (capped) {
+    $("limitWarning").textContent = `Your contributions would reach ${money.format(capped.annual)}/yr at age ${capped.age}, above the ${IRS_LIMITS.year} workplace-plan limit (401(k), 403(b), 457(b), TSP) of ${money.format(capped.limit)}/yr for that age, so they're capped at the limit and the rest isn't counted. Enter money for an IRA or HSA under IRA, HSA and other accounts, or turn on the Mega Backdoor Roth if your plan allows it.`;
   }
   $("megaWarning").hidden = !overAdditions;
   if (overAdditions) {
@@ -714,7 +718,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=b8cc2a8e5f", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=88058eeffc", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;
