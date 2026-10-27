@@ -173,7 +173,8 @@ body {
 
 .field { display: grid; gap: 6px; }
 
-.field label {
+.field label,
+.field-label {
   font-size: 0.875rem;
   font-weight: 600;
 }

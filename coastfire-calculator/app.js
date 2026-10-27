@@ -10,20 +10,20 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=a26466d225";
+} from "./calc.js?v=b8cc2a8e5f";
 import {
   requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   earlyAccessGuidance,
-} from "./retirement.js?v=a26466d225";
-import { IRS_LIMITS } from "./limits.js?v=a26466d225";
-import { computeScenario, sensitivity } from "./scenario.js?v=a26466d225";
-import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=a26466d225";
-import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=a26466d225";
-import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=a26466d225";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=a26466d225";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=a26466d225";
+} from "./retirement.js?v=b8cc2a8e5f";
+import { IRS_LIMITS } from "./limits.js?v=b8cc2a8e5f";
+import { computeScenario, sensitivity } from "./scenario.js?v=b8cc2a8e5f";
+import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=b8cc2a8e5f";
+import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=b8cc2a8e5f";
+import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=b8cc2a8e5f";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=b8cc2a8e5f";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=b8cc2a8e5f";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -85,6 +85,9 @@ $("fire").addEventListener("input", () => {
 // Switching $ <-> % converts the amounts using salary (or falls back to a typical value;
 // 0 for the Mega Backdoor Roth and other-account amounts).
 let lastUnit = form.elements.contributionUnit.value;
+// The converted amounts describe the same plan, so the update that follows a unit
+// switch refreshes the risk card without dimming it.
+let unitSwitched = false;
 for (const radio of form.elements.contributionUnit) {
   radio.addEventListener("change", () => {
     const to = form.elements.contributionUnit.value;
@@ -97,6 +100,7 @@ for (const radio of form.elements.contributionUnit) {
     convert("megaContribution", 0);
     convert("otherContribution", 0);
     lastUnit = to;
+    unitSwitched = true;
   });
 }
 
@@ -106,7 +110,15 @@ $("reset").addEventListener("click", () => {
   update();
 });
 
-const onEdit = () => { persist = true; update(); };
+// A unit radio fires "input" before its "change" converts the amounts; skip it so
+// the old amounts are never read in the new unit. Also skip events that change
+// nothing, like the "change" a text field fires on blur after its "input"s.
+const onEdit = (e) => {
+  if (e.type === "input" && e.target.name === "contributionUnit") return;
+  if (JSON.stringify(readFormValues()) === lastRendered) return;
+  persist = true;
+  update();
+};
 form.addEventListener("input", onEdit);
 form.addEventListener("change", onEdit);
 form.addEventListener("submit", (e) => e.preventDefault());
@@ -487,8 +499,13 @@ $("applySs").addEventListener("click", () => {
 
 // ---------- Update ----------
 
+let lastRendered = null; // the form values update() last ran with, as JSON
+
 function update() {
+  const quiet = unitSwitched;
+  unitSwitched = false;
   const values = readFormValues();
+  lastRendered = JSON.stringify(values);
   if (persist) saveValues(values);
   scheduleUrlSync(values);
   $("reset").disabled = isDefaultState(values, DEFAULTS);
@@ -629,7 +646,7 @@ function update() {
   drawChart(series, milestones, simulated ? lastBand : null);
   fillTable(series);
   fillSensitivity(i, sensitivity(i));
-  if (simulated) requestRisk(i);
+  if (simulated) requestRisk(i, { quiet });
   else cancelRisk();
 }
 
@@ -676,10 +693,10 @@ function cancelRisk() {
   $("cardRisk").classList.remove("is-busy");
 }
 
-function requestRisk(inputs) {
+function requestRisk(inputs, { quiet = false } = {}) {
   clearTimeout(riskTimer);
   const id = ++riskSeq;
-  $("cardRisk").classList.add("is-busy");
+  if (!quiet) $("cardRisk").classList.add("is-busy");
   riskTimer = setTimeout(() => dispatchRisk(id, inputs), 150);
 }
 
@@ -697,7 +714,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=a26466d225", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=b8cc2a8e5f", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;
