@@ -10,20 +10,23 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=88058eeffc";
+} from "./calc.js?v=c6dcd7d35c";
 import {
   requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   earlyAccessGuidance,
-} from "./retirement.js?v=88058eeffc";
-import { IRS_LIMITS } from "./limits.js?v=88058eeffc";
-import { computeScenario, sensitivity } from "./scenario.js?v=88058eeffc";
-import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=88058eeffc";
-import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=88058eeffc";
-import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=88058eeffc";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=88058eeffc";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=88058eeffc";
+  earlyPenaltyCost,
+  EARLY_ACCESS_AGE,
+  EARLY_ACCESS_OPTIONS,
+} from "./retirement.js?v=c6dcd7d35c";
+import { IRS_LIMITS } from "./limits.js?v=c6dcd7d35c";
+import { computeScenario, sensitivity } from "./scenario.js?v=c6dcd7d35c";
+import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=c6dcd7d35c";
+import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=c6dcd7d35c";
+import { TAX_YEAR, FILING_STATUSES, estimateRate } from "./tax.js?v=c6dcd7d35c";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=c6dcd7d35c";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery } from "./persist.js?v=c6dcd7d35c";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -72,7 +75,7 @@ for (const el of form.querySelectorAll("[data-amount]")) {
 // calculation uses; editing it directly back-fills spending. Everything that
 // changes the amount needed at the traditional retirement age re-derives it.
 const setAmount = (id, value) => { if (Number.isFinite(value)) $(id).value = groupDigits(String(Math.round(value))); };
-const FIRE_DRIVERS = ["spending", "swr", "taxRate", "benefit", "benefitAge", "retirementAge", "portfolio", "returnModel", "customReturn", "customVolatility"];
+const FIRE_DRIVERS = ["spending", "swr", "taxRate", "benefit", "benefitAge", "earlyAccess", "retirementAge", "portfolio", "returnModel", "customReturn", "customVolatility"];
 for (const id of FIRE_DRIVERS) {
   $(id).addEventListener("input", syncFire);
   $(id).addEventListener("change", syncFire);
@@ -128,8 +131,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 // ---------- Saved values ----------
 
 // Form fields remembered in localStorage, by name.
-const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility", "filingStatus", "stateTax", "rothShare", "ssEarnings", "ssStartAge", "megaBackdoor", "megaContribution", "otherContribution", "employerContribution"];
-const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], megaBackdoor: ["off", "on"], returnModel: ["fixed", "montecarlo", "historical"], filingStatus: FILING_STATUSES.map((s) => s.id), portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
+const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility", "filingStatus", "stateTax", "rothShare", "ssEarnings", "ssStartAge", "megaBackdoor", "megaContribution", "otherContribution", "employerContribution", "earlyAccess"];
+const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], megaBackdoor: ["off", "on"], returnModel: ["fixed", "montecarlo", "historical"], earlyAccess: EARLY_ACCESS_OPTIONS.map((o) => o.id), filingStatus: FILING_STATUSES.map((s) => s.id), portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
 
 // Checkboxes are saved as "on" / "off".
 const isCheckbox = (name) => form.elements[name].type === "checkbox";
@@ -229,6 +232,7 @@ function needAt(retireAge) {
     swr: num("swr") / 100,
     benefit: numOr0("benefit"),
     benefitAge: num("benefitAge"),
+    earlyAccess: $("earlyAccess").value,
     retireAge,
     annualReturn: resolveReturn($("portfolio").value, num("customReturn") / 100),
   };
@@ -277,6 +281,7 @@ function readInputs() {
     taxRate: num("taxRate") / 100,
     benefit: numOr0("benefit"),
     benefitAge: num("benefitAge"),
+    earlyAccess: $("earlyAccess").value,
     fire: num("fire"),
     portfolio,
     annualReturn: resolveReturn(portfolio, num("customReturn") / 100),
@@ -616,21 +621,25 @@ function update() {
   }
   setCard("cardSecondary", coastCard);
 
-  // The FIRE number depends on the retirement age only when a benefit starts later.
+  // The FIRE number depends on the retirement age only when a benefit starts later
+  // or withdrawals before 59½ pay the penalty.
   const fireCardAge = isTarget ? i.targetAge : fireAge ?? i.retirementAge;
   const fireNeeded = requiredAt(fireCardAge);
+  const penaltyNeeded = penaltyPart(i, fireCardAge, fireNeeded);
   setCard("cardFire", {
-    label: i.benefit > 0 ? `FIRE number (retire at ${splitAge(fireCardAge).years})` : "FIRE number",
+    label: i.benefit > 0 || fireCardAge < EARLY_ACCESS_AGE ? `FIRE number (retire at ${splitAge(fireCardAge).years})` : "FIRE number",
     value: money.format(fireNeeded),
     sub: `${money.format(i.spending)}/yr spending at a ${pct.format(i.swr)} withdrawal rate`
       + (i.taxRate > 0 ? `, ${pct.format(i.taxRate)} tax` : "")
       + (i.benefit > 0 ? ` · ${money.format(i.benefit)}/yr benefit from ${i.benefitAge}` : "")
+      + (penaltyNeeded > 0 ? ` · ${money.format(penaltyNeeded)} for the early-withdrawal penalty` : "")
       + (isTarget && fireAge !== null ? ` · reached at ${formatAge(fireAge)}` : ""),
   });
 
-  const guidance = earlyAccessGuidance(isTarget ? i.targetAge : fireAge ?? Infinity);
+  const earlyAge = isTarget ? i.targetAge : fireAge ?? Infinity;
+  const guidance = earlyAccessGuidance(earlyAge, i.earlyAccess);
   $("earlyNote").hidden = guidance === "none";
-  $("earlyNote").textContent = EARLY_NOTES[guidance] ?? "";
+  $("earlyNote").textContent = guidance === "none" ? "" : earlyNote(guidance, i.earlyAccess, earlyAge, penaltyPart(i, earlyAge, requiredAt(earlyAge)));
   setCard("cardCoast", {
     value: money.format(coastNow),
     good: alreadyCoast,
@@ -654,10 +663,35 @@ function update() {
   else cancelRisk();
 }
 
-const EARLY_NOTES = {
-  "rule-of-55": "Retiring at 55–59½? The Rule of 55 lets you withdraw from the 401(k) or 403(b) of the employer you leave in or after the year you turn 55 without the 10% early-withdrawal penalty (age 50 for public-safety workers in a government plan). Governmental 457(b) plans have no early-withdrawal penalty at all; IRAs don't qualify.",
-  "before-55": "Retiring before 55 means bridging to 59½ — for example with 72(t) substantially equal payments, a Roth conversion ladder, governmental 457(b) money (no early-withdrawal penalty), or taxable savings. This calculator doesn't model early-withdrawal penalties.",
-};
+/** Dollars of the balance needed to retire at `retireAge` that go to the early-withdrawal penalty. */
+function penaltyPart(i, retireAge, needed) {
+  const need = { ...i, retireAge };
+  const cost = earlyPenaltyCost(need);
+  if (!(cost > 0)) return 0;
+  const total = requiredBalance(need);
+  return total > 0 && Number.isFinite(needed) ? (cost / total) * needed : 0;
+}
+
+const AVOID_PENALTY = "72(t) substantially equal payments, a Roth conversion ladder, governmental 457(b) money (no early-withdrawal penalty) or taxable savings";
+
+function earlyNote(guidance, earlyAccess, retireAge, penalty) {
+  const at = formatAge(retireAge);
+  const cost = penalty > 0 ? ` That adds about ${money.format(penalty)} to your FIRE number.` : "";
+  switch (guidance) {
+    case "penalty":
+      return `Retiring at ${at}, withdrawals until 59½ are counted with the 10% early-withdrawal penalty on top of income tax.${cost}`
+        + (retireAge >= 55 ? " If you leave your employer in or after the year you turn 55, the Rule of 55 waives it for that employer's 401(k) or 403(b): choose it under Withdrawals before 59½." : "")
+        + ` You can also avoid it with ${AVOID_PENALTY}.`;
+    case "rule-of-55":
+      return `Using the Rule of 55: leaving your job at ${at}, withdrawals from that employer's 401(k) or 403(b) are penalty-free. It doesn't cover IRAs or earlier employers' plans unless you roll them in before you leave, and the plan must allow partial withdrawals.`;
+    case "rule-too-early":
+      return `The Rule of 55 only applies if you leave your job in or after the year you turn ${earlyAccess === "rule50" ? 50 : 55}, so retiring at ${at} the 10% penalty is counted until 59½.${cost} You could bridge with ${AVOID_PENALTY}.`;
+    case "penalty-free":
+      return `Withdrawals before 59½ are counted as penalty-free. Make sure you have a way to get there: ${AVOID_PENALTY}.`;
+    default:
+      return "";
+  }
+}
 
 function summaryHtml(s) {
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -718,7 +752,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=88058eeffc", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=c6dcd7d35c", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;

@@ -29,8 +29,16 @@ amount is held fixed and only the basic contribution is solved. The 100%-of-comp
 matches the chosen rate; per-portfolio volatility) for a likely range and chances of success. Or replay
 history: real (after-inflation) returns of the S&P 500 and 10-year Treasuries, 1928–2025, mixed to match the
 portfolio, starting in every year (later years wrap around to 1928) — with the worst start year named. Sources
-(NYU/Damodaran returns, BLS CPI-U via FRED, December-to-December) are listed in `history.js`. Early-withdrawal
-penalties are not modeled.
+(NYU/Damodaran returns, BLS CPI-U via FRED, December-to-December) are listed in `history.js`.
+
+Retiring before 59½: by default, withdrawals until 59½ pay the 10% early-withdrawal penalty on top of the tax rate
+(grossed up by 1 / (1 − tax − 10%)), funded like the Social Security bridge, so the FIRE number grows the earlier you
+retire and the FIRE card shows how much of it is the penalty. "Withdrawals before 59½" can instead apply the
+**Rule of 55** (no penalty when you retire at 55 or later; retiring earlier, the penalty applies until 59½), its
+public-safety version at 50, or count early access as penalty-free (72(t) payments, a Roth conversion ladder,
+governmental 457(b) money, taxable savings). The rule is applied to the whole balance, and the age test is your
+retirement age rather than the calendar year you turn 55; Roth contribution basis and 5-year conversion waits
+aren't modeled.
 
 The tax-rate field is a plain number (10% by default); below it the calculator estimates a rate from your spending,
 benefit, filing status, state tax and tax-free (Roth) share, using the 2025 federal brackets and standard

@@ -5,7 +5,7 @@ import { computeScenario } from "../coastfire-calculator/scenario.js";
 import { monthlyReturnPaths } from "../coastfire-calculator/montecarlo.js";
 import { requiredBalance } from "../coastfire-calculator/retirement.js";
 
-const need = { spending: 40_000, taxRate: 0.1, swr: 0.04, benefit: 0, benefitAge: 67, annualReturn: 0.07 };
+const need = { spending: 40_000, taxRate: 0.1, swr: 0.04, benefit: 0, benefitAge: 67, annualReturn: 0.07, earlyAccess: "none" };
 const fire = Math.round(requiredBalance({ ...need, retireAge: 65 }));
 const base = Object.freeze({
   mode: "contribution", age: 30, balance: 50_000, retirementAge: 65, targetAge: 55,
