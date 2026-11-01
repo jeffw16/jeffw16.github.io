@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your retirement accounts (401(k), 403(b), 457(b), TSP, IRA, HSA) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=88058eeffc">
+  <link rel="stylesheet" href="style.css?v=c6dcd7d35c">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=88058eeffc"></script>
+  <script type="module" src="app.js?v=c6dcd7d35c"></script>
 </head>
 <body>
   <main class="page">
@@ -201,11 +201,22 @@
           </div>
 
           <div class="field">
+            <div class="label-row"><label for="earlyAccess">Withdrawals before 59½</label><button type="button" class="info" popovertarget="tip-early" aria-label="About early withdrawals">i</button></div>
+            <select id="earlyAccess" name="earlyAccess">
+              <option value="penalty" selected>Pay the 10% penalty until 59½</option>
+              <option value="rule55">Rule of 55 (leave my job at 55 or later)</option>
+              <option value="rule50">Rule of 55 for public safety (age 50)</option>
+              <option value="none">No penalty (72(t), Roth ladder, 457(b), taxable)</option>
+            </select>
+            <p class="hint">Only matters if you retire before 59½. Retirement-account withdrawals before then usually owe a 10% penalty on top of income tax.</p>
+          </div>
+
+          <div class="field">
             <label for="fire">FIRE number</label>
             <div class="affix" data-prefix="$">
               <input id="fire" name="fire" type="text" inputmode="decimal" autocomplete="off" data-amount value="1,111,111">
             </div>
-            <p class="hint" id="fireHint">Balance needed at your traditional retirement age, after tax and any benefit. Type your own target to override it; spending updates to match.</p>
+            <p class="hint" id="fireHint">Balance needed at your traditional retirement age, after tax, any benefit and any early-withdrawal penalty. Type your own target to override it; spending updates to match.</p>
           </div>
         </details>
 
@@ -399,7 +410,7 @@
       <p>
         All figures are in today's dollars using <em>real</em> (inflation-adjusted) returns, compounded monthly,
         with contributions at the end of each month. Portfolio returns are rough long-run historical averages, not
-        guarantees. Taxes are modeled as a single effective rate on withdrawals; fees and early-withdrawal penalties are not modeled. This is an educational tool, not financial advice.
+        guarantees. Taxes are modeled as a single effective rate on withdrawals, plus the 10% early-withdrawal penalty before 59½ unless you choose a way around it; fees are not modeled. This is an educational tool, not financial advice.
       </p>
     </footer>
 
@@ -426,6 +437,10 @@
     <div id="tip-bridge" class="tip" popover>
       <h2>Social Security bridge</h2>
       <p>If you retire before Social Security or a pension starts, your savings have to cover your full spending until they do. The calculator adds enough for those bridge years, then counts the benefit against spending afterward.</p>
+    </div>
+    <div id="tip-early" class="tip" popover>
+      <h2>Withdrawals before 59½</h2>
+      <p>Taking money out of a 401(k), 403(b), TSP or IRA before 59½ usually costs a 10% penalty on top of income tax, so retiring early needs a bigger balance to cover it until 59½. The Rule of 55 waives the penalty on the 401(k) or 403(b) of the employer you leave in or after the year you turn 55 (50 for public-safety workers in a governmental plan); IRAs and old employers' plans don't qualify unless rolled in first. Retire before that age and the penalty applies until 59½. Choose "No penalty" if you'll bridge the gap another way: 72(t) substantially equal payments, a Roth conversion ladder, governmental 457(b) money or taxable savings.</p>
     </div>
     <div id="tip-mega" class="tip" popover>
       <h2>Mega Backdoor Roth</h2>

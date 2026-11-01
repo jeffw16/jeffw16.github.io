@@ -8,7 +8,10 @@ import {
   benefitCoversSpending,
   requiredBalanceFn,
   earlyAccessGuidance,
+  earlyPenaltyCost,
+  penaltyFreeAge,
   EARLY_ACCESS_AGE,
+  EARLY_PENALTY_RATE,
 } from "../coastfire-calculator/retirement.js";
 import { balanceWithContrib } from "../coastfire-calculator/calc.js";
 
@@ -56,8 +59,9 @@ describe("requiredBalance", () => {
   it("matches spending / swr at zero tax", () => {
     assert.equal(requiredBalance({ ...need, taxRate: 0 }), 1_000_000);
   });
-  it("does not depend on retirement age without a benefit", () => {
-    assert.equal(requiredBalance({ ...need, retireAge: 50 }), requiredBalance({ ...need, retireAge: 70 }));
+  it("does not depend on retirement age without a benefit or penalty", () => {
+    const n = { ...need, earlyAccess: "none" };
+    assert.equal(requiredBalance({ ...n, retireAge: 50 }), requiredBalance({ ...n, retireAge: 70 }));
   });
   it("a benefit that has started lowers the need to the shortfall", () => {
     const r = requiredBalance({ ...need, taxRate: 0, benefit: 15_000, benefitAge: 62, retireAge: 65 });
@@ -140,8 +144,8 @@ describe("requiredBalanceFn", () => {
     const f = requiredBalanceFn(need, 65, 1_500_000);
     close(f(65), 1_500_000);
   });
-  it("is constant across ages without a benefit", () => {
-    const f = requiredBalanceFn(need, 65, 1_500_000);
+  it("is constant across ages without a benefit or penalty", () => {
+    const f = requiredBalanceFn({ ...need, earlyAccess: "none" }, 65, 1_500_000);
     close(f(50), 1_500_000);
     close(f(80), 1_500_000);
   });
@@ -160,17 +164,88 @@ describe("requiredBalanceFn", () => {
   });
 });
 
+describe("penaltyFreeAge", () => {
+  it("is 59.5 with the penalty, or the retirement age if later", () => {
+    assert.equal(penaltyFreeAge(45, "penalty"), 59.5);
+    assert.equal(penaltyFreeAge(62, "penalty"), 62);
+  });
+  it("is the retirement age under the Rule of 55 from 55, else 59.5", () => {
+    assert.equal(penaltyFreeAge(55, "rule55"), 55);
+    assert.equal(penaltyFreeAge(57, "rule55"), 57);
+    assert.equal(penaltyFreeAge(54.9, "rule55"), 59.5);
+  });
+  it("uses age 50 for public-safety workers", () => {
+    assert.equal(penaltyFreeAge(50, "rule50"), 50);
+    assert.equal(penaltyFreeAge(49, "rule50"), 59.5);
+  });
+  it("is the retirement age when early access is penalty-free", () => {
+    assert.equal(penaltyFreeAge(40, "none"), 40);
+  });
+  it("defaults to paying the penalty", () => {
+    assert.equal(penaltyFreeAge(50), 59.5);
+  });
+});
+
+describe("requiredBalance with the early-withdrawal penalty", () => {
+  const n = { ...need, taxRate: 0.2, annualReturn: 0 };
+  it("adds the penalty on withdrawals until 59.5", () => {
+    // At a 0% return the bridge is just the sum of the extra withdrawals: 9.5 years.
+    const extra = 40_000 / (1 - 0.2 - EARLY_PENALTY_RATE) - 40_000 / 0.8;
+    close(requiredBalance({ ...n, retireAge: 50 }), 40_000 / 0.8 / 0.04 + extra * 9.5);
+    close(earlyPenaltyCost({ ...n, retireAge: 50 }), extra * 9.5);
+  });
+  it("is unchanged from 59.5 on", () => {
+    assert.equal(earlyPenaltyCost({ ...n, retireAge: 59.5 }), 0);
+    assert.equal(earlyPenaltyCost({ ...n, retireAge: 65 }), 0);
+  });
+  it("costs more the earlier you retire", () => {
+    assert.ok(earlyPenaltyCost({ ...need, retireAge: 45 }) > earlyPenaltyCost({ ...need, retireAge: 55 }));
+  });
+  it("the Rule of 55 waives it from 55, not before", () => {
+    assert.equal(earlyPenaltyCost({ ...need, retireAge: 55, earlyAccess: "rule55" }), 0);
+    close(earlyPenaltyCost({ ...need, retireAge: 54, earlyAccess: "rule55" }), earlyPenaltyCost({ ...need, retireAge: 54 }));
+  });
+  it("only penalizes the shortfall once a benefit has started", () => {
+    const b = { ...n, benefit: 30_000, benefitAge: 50, retireAge: 50 };
+    const extra = 10_000 / (1 - 0.2 - EARLY_PENALTY_RATE) - 10_000 / 0.8;
+    close(earlyPenaltyCost(b), extra * 9.5);
+  });
+  it("penalizes full spending before a benefit and the shortfall after it starts", () => {
+    const b = { ...n, benefit: 30_000, benefitAge: 55, retireAge: 50 };
+    const d = 1 / (1 - 0.2 - EARLY_PENALTY_RATE) - 1 / 0.8;
+    close(earlyPenaltyCost(b), d * (40_000 * 5 + 10_000 * 4.5));
+  });
+  it("is NaN when tax plus penalty leaves nothing", () => {
+    assert.ok(Number.isNaN(requiredBalance({ ...need, taxRate: 0.95, retireAge: 50 })));
+  });
+});
+
+describe("spendingFromRequired with the early-withdrawal penalty", () => {
+  for (const extra of [{}, { benefit: 15_000, benefitAge: 67 }, { benefit: 15_000, benefitAge: 52 }, { benefit: 60_000, benefitAge: 62 }]) {
+    it(`inverts requiredBalance (${JSON.stringify(extra)})`, () => {
+      const n = { ...need, ...extra, retireAge: 50 };
+      close(spendingFromRequired({ ...n, required: requiredBalance(n) }), n.spending, 1e-9);
+    });
+  }
+});
+
 describe("earlyAccessGuidance", () => {
-  it("is none at 59.5 and later", () => {
-    assert.equal(earlyAccessGuidance(EARLY_ACCESS_AGE), "none");
-    assert.equal(earlyAccessGuidance(65), "none");
+  it("is none at 59.5 and later, or with no retirement age", () => {
+    assert.equal(earlyAccessGuidance(EARLY_ACCESS_AGE, "penalty"), "none");
+    assert.equal(earlyAccessGuidance(65, "rule55"), "none");
+    assert.equal(earlyAccessGuidance(Infinity), "none");
   });
-  it("is rule-of-55 from 55 up to 59.5", () => {
-    assert.equal(earlyAccessGuidance(55), "rule-of-55");
-    assert.equal(earlyAccessGuidance(59.4), "rule-of-55");
+  it("is penalty before 59.5 by default", () => {
+    assert.equal(earlyAccessGuidance(59.4), "penalty");
+    assert.equal(earlyAccessGuidance(40, "penalty"), "penalty");
   });
-  it("is before-55 below 55", () => {
-    assert.equal(earlyAccessGuidance(54.9), "before-55");
-    assert.equal(earlyAccessGuidance(40), "before-55");
+  it("is rule-of-55 when the rule applies, rule-too-early when retiring before its age", () => {
+    assert.equal(earlyAccessGuidance(55, "rule55"), "rule-of-55");
+    assert.equal(earlyAccessGuidance(54.9, "rule55"), "rule-too-early");
+    assert.equal(earlyAccessGuidance(52, "rule50"), "rule-of-55");
+    assert.equal(earlyAccessGuidance(48, "rule50"), "rule-too-early");
+  });
+  it("is penalty-free when early access is counted as penalty-free", () => {
+    assert.equal(earlyAccessGuidance(45, "none"), "penalty-free");
   });
 });

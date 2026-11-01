@@ -41,10 +41,11 @@ test("default load shows the model's results", async ({ page }) => {
 
 test("target mode shows the contribution needed to retire at 55", async ({ page }) => {
   await page.locator('input[name="mode"][value="target"]').check();
-  const needed = requiredMonthlyContribution({ ...base, fire, retirementAge: 55 });
+  // Retiring at 55 counts the 10% early-withdrawal penalty until 59½ by default.
+  const needed = requiredMonthlyContribution({ ...base, fire: requiredAt(55), retirementAge: 55 });
   await expect(page.locator("#cardPrimary .card-label")).toHaveText("Monthly contribution needed");
   await expect(card(page, "cardPrimary")).toContainText(money(needed));
-  await expect(card(page, "cardPrimary")).toContainText("$1,072");
+  await expect(card(page, "cardPrimary")).toContainText("$1,100");
   await expect(page.locator("#targetAge")).toBeVisible();
   await expect(page.locator("#contribution")).toBeHidden();
 });
@@ -132,11 +133,50 @@ test("early-access notes follow the retirement age", async ({ page }) => {
   const note = page.locator("#earlyNote");
   await page.locator('input[name="mode"][value="target"]').check();
   await page.locator("#targetAge").fill("57");
+  await expect(note).toContainText("10% early-withdrawal penalty");
   await expect(note).toContainText("Rule of 55");
   await page.locator("#targetAge").fill("50");
   await expect(note).toContainText("72(t)");
+  await expect(note).not.toContainText("Rule of 55");
   await page.locator("#targetAge").fill("60");
   await expect(note).toBeHidden();
+});
+
+test("the early-withdrawal penalty raises the FIRE number before 59½, and the Rule of 55 waives it", async ({ page }) => {
+  await page.locator('input[name="mode"][value="target"]').check();
+  const penalty = Math.round(requiredAt(55));
+  const free = Math.round(requiredBalance({ ...need, retireAge: 55, earlyAccess: "none" }));
+  expect(penalty).toBeGreaterThan(free);
+  await expect(page.locator("#cardFire .card-label")).toHaveText("FIRE number (retire at 55)");
+  await expect(card(page, "cardFire")).toHaveText(money(penalty));
+  await expect(page.locator("#cardFire .card-sub")).toContainText(`${money(penalty - free)} for the early-withdrawal penalty`);
+  await expect(page.locator("#earlyNote")).toContainText(`adds about ${money(penalty - free)}`);
+
+  await page.locator("#earlyAccess").selectOption("rule55");
+  await expect(card(page, "cardFire")).toHaveText(money(free));
+  await expect(card(page, "cardPrimary")).toContainText("$1,072");
+  await expect(page.locator("#cardFire .card-sub")).not.toContainText("penalty");
+  await expect(page.locator("#earlyNote")).toContainText("Using the Rule of 55");
+
+  // Leaving before 55 doesn't qualify, so the penalty is back.
+  await page.locator("#targetAge").fill("54");
+  await expect(page.locator("#earlyNote")).toContainText("only applies if you leave your job in or after the year you turn 55");
+  await expect(page.locator("#cardFire .card-sub")).toContainText("for the early-withdrawal penalty");
+
+  // Public-safety workers qualify from 50.
+  await page.locator("#earlyAccess").selectOption("rule50");
+  await expect(page.locator("#earlyNote")).toContainText("Using the Rule of 55");
+  await expect(page).toHaveURL(/earlyAccess=rule50/);
+});
+
+test("a later traditional retirement age keeps the FIRE number free of the penalty", async ({ page }) => {
+  await expect(card(page, "cardFire")).toHaveText("$1,111,111");
+  await page.locator("#earlyAccess").selectOption("none");
+  await expect(card(page, "cardFire")).toHaveText("$1,111,111");
+  await page.locator("#retirementAge").fill("50");
+  await expect(page.locator("#fire")).toHaveValue("1,111,111");
+  await page.locator("#earlyAccess").selectOption("penalty");
+  await expect(page.locator("#fire")).toHaveValue(Math.round(requiredBalance({ ...need, retireAge: 50 })).toLocaleString("en-US"));
 });
 
 test("custom portfolio reveals the custom return field", async ({ page }) => {
@@ -342,10 +382,10 @@ test.describe("IRA, HSA and employer contributions", () => {
 
   test("target mode holds IRA/HSA and employer money fixed", async ({ page }) => {
     await page.locator('input[name="mode"][value="target"]').check();
-    await expect(card(page, "cardPrimary")).toContainText("$1,072");
-    await page.locator("#otherContribution").fill("72");
+    await expect(card(page, "cardPrimary")).toContainText("$1,100");
+    await page.locator("#otherContribution").fill("100");
     await expect(card(page, "cardPrimary")).toContainText("$1,000");
-    await expect(page.locator("#cardPrimary .card-sub")).toContainText("Plus your $72/mo IRA/HSA.");
+    await expect(page.locator("#cardPrimary .card-sub")).toContainText("Plus your $100/mo IRA/HSA.");
     await page.locator("#salary").fill("120,000");
     await page.locator("#employerContribution").fill("100");
     await expect(card(page, "cardPrimary")).toHaveText("$0/ mo");
@@ -502,7 +542,7 @@ test.describe("coast path and sensitivity", () => {
     await expect(row).toHaveCount(1);
     await expect(row.locator("th")).toHaveText("Monthly contribution needed");
     await expect(row.locator("td")).toHaveCount(3);
-    await expect(row.locator("td").nth(1)).toContainText("$1,072/mo");
+    await expect(row.locator("td").nth(1)).toContainText("$1,100/mo");
   });
 });
 

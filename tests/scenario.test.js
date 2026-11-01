@@ -4,7 +4,7 @@ import { computeScenario, sensitivity, afterTaxAmountOf, otherAmountOf, schedule
 import { requiredBalance } from "../coastfire-calculator/retirement.js";
 import { contributionSchedule, balanceWithContrib } from "../coastfire-calculator/calc.js";
 
-const need = { spending: 40_000, taxRate: 0.1, swr: 0.04, benefit: 0, benefitAge: 67, annualReturn: 0.07 };
+const need = { spending: 40_000, taxRate: 0.1, swr: 0.04, benefit: 0, benefitAge: 67, annualReturn: 0.07, earlyAccess: "none" };
 const fire = Math.round(requiredBalance({ ...need, retireAge: 65 })); // 1,111,111
 
 const base = Object.freeze({
@@ -68,6 +68,26 @@ describe("computeScenario (contribution mode)", () => {
   });
   it("does not mutate a frozen input", () => {
     assert.doesNotThrow(() => computeScenario(Object.freeze({ ...base })));
+  });
+});
+
+describe("computeScenario (early-withdrawal penalty)", () => {
+  const early = { ...base, mode: "target", earlyAccess: "penalty" };
+  const free = computeScenario({ ...base, mode: "target" });
+  it("needs more to retire at 55 when withdrawals until 59½ pay the penalty", () => {
+    const s = computeScenario(early);
+    assert.ok(s.requiredAt(55) > free.requiredAt(55));
+    assert.ok(s.amount > free.amount);
+  });
+  it("the Rule of 55 removes the penalty when retiring at 55", () => {
+    const s = computeScenario({ ...early, earlyAccess: "rule55" });
+    assert.ok(Math.abs(s.amount - free.amount) < 0.01);
+  });
+  it("leaves a traditional retirement at 65 unchanged", () => {
+    const s = computeScenario({ ...base, earlyAccess: "penalty" });
+    const n = computeScenario(base);
+    assert.equal(s.coastAge, n.coastAge);
+    assert.equal(s.fireAge, n.fireAge);
   });
 });
 
