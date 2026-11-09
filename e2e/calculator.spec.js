@@ -1,14 +1,16 @@
 import { test, expect, URL_PATH, CHART_JS } from "./fixtures.js";
 import {
-  coastTarget, findCoastAge, findFireAge, requiredMonthlyContribution,
+  coastTarget, findCoastAge, findFireAge, requiredMonthlyContribution, resolveReturn, DEFAULT_PORTFOLIO_ID,
 } from "../coastfire-calculator/calc.js";
 import { requiredBalance, requiredBalanceFn } from "../coastfire-calculator/retirement.js";
 import { formatAge } from "../coastfire-calculator/format.js";
 
-const base = { age: 30, balance: 50_000, annualReturn: 0.07, retirementAge: 65 };
+// The default portfolio's real return (the S&P 500 preset).
+const RATE = resolveReturn(DEFAULT_PORTFOLIO_ID);
+const base = { age: 30, balance: 50_000, annualReturn: RATE, retirementAge: 65 };
 // Default assumptions: $40k spending, 4% withdrawal, 10% tax (before and after any benefit),
 // no benefit, and bridge years priced at a 2% real return.
-const need = { spending: 40_000, taxRate: 0.1, bridgeTaxRate: 0.1, swr: 0.04, benefit: 0, benefitAge: 67, annualReturn: 0.07, bridgeReturn: 0.02 };
+const need = { spending: 40_000, taxRate: 0.1, bridgeTaxRate: 0.1, swr: 0.04, benefit: 0, benefitAge: 67, annualReturn: RATE, bridgeReturn: 0.02 };
 const fire = Math.round(requiredBalance({ ...need, retireAge: 65 })); // 1,111,111
 const requiredAt = requiredBalanceFn(need, 65, fire);
 const money = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
@@ -32,12 +34,12 @@ test("default load shows the model's results", async ({ page }) => {
   await expect(page.locator("#cardPrimary")).toContainText(ageText(fireAge));
   await expect(page.locator("#cardSecondary")).toContainText(ageText(coastAge));
   await expect(card(page, "cardFire")).toHaveText(money(fire));
-  await expect(card(page, "cardCoast")).toHaveText(money(coastTarget({ fire, annualReturn: 0.07, age: 30, retirementAge: 65 })));
+  await expect(card(page, "cardCoast")).toHaveText(money(coastTarget({ fire, annualReturn: RATE, age: 30, retirementAge: 65 })));
   // Pinned values for the default inputs.
   await expect(card(page, "cardFire")).toHaveText("$1,111,111");
-  await expect(card(page, "cardCoast")).toHaveText("$104,070");
-  await expect(page.locator("#cardPrimary")).toContainText(/61\s*years, 11 months/);
-  await expect(page.locator("#cardSecondary")).toContainText(/44\s*years/);
+  await expect(card(page, "cardCoast")).toHaveText("$111,113");
+  await expect(page.locator("#cardPrimary")).toContainText(/62\s*years, 7 months/);
+  await expect(page.locator("#cardSecondary")).toContainText(/47\s*years/);
 });
 
 test("target mode shows the contribution needed to retire at 55", async ({ page }) => {
@@ -45,7 +47,7 @@ test("target mode shows the contribution needed to retire at 55", async ({ page 
   const needed = requiredMonthlyContribution({ ...base, fire, retirementAge: 55 });
   await expect(page.locator("#cardPrimary .card-label")).toHaveText("Monthly contribution needed");
   await expect(card(page, "cardPrimary")).toContainText(money(needed));
-  await expect(card(page, "cardPrimary")).toContainText("$1,072");
+  await expect(card(page, "cardPrimary")).toContainText("$1,121");
   await expect(page.locator("#targetAge")).toBeVisible();
   await expect(page.locator("#contribution")).toBeHidden();
 });
@@ -337,15 +339,15 @@ test.describe("IRA, HSA and employer contributions", () => {
     await page.locator("#salary").fill("120,000");
     await expect(page.locator("#employerHint")).toBeHidden();
     // 5% of $120,000 is the default $500/mo, so the default result.
-    await expect(page.locator("#cardPrimary")).toContainText(/61\s*years, 11 months/);
+    await expect(page.locator("#cardPrimary")).toContainText(/62\s*years, 7 months/);
     await expect(page.locator("#cardPrimary .card-sub")).toContainText("$0/mo plus $500/mo employer contribution");
   });
 
   test("target mode holds IRA/HSA and employer money fixed", async ({ page }) => {
     await page.locator('input[name="mode"][value="target"]').check();
-    await expect(card(page, "cardPrimary")).toContainText("$1,072");
+    await expect(card(page, "cardPrimary")).toContainText("$1,121");
     await page.locator("#otherContribution").fill("72");
-    await expect(card(page, "cardPrimary")).toContainText("$1,000");
+    await expect(card(page, "cardPrimary")).toContainText("$1,049");
     await expect(page.locator("#cardPrimary .card-sub")).toContainText("Plus your $72/mo IRA/HSA.");
     await page.locator("#salary").fill("120,000");
     await page.locator("#employerContribution").fill("100");
@@ -489,12 +491,12 @@ test.describe("coast path and sensitivity", () => {
   });
 
   test("sensitivity table shows ages at -1% / chosen / +1% in contribution mode", async ({ page }) => {
-    await expect(page.locator("#sensitivity thead th")).toHaveText(["1% lower (6%)", "As chosen (7%)", "1% higher (8%)"]);
+    await expect(page.locator("#sensitivity thead th")).toHaveText(["1% lower (5.8%)", "As chosen (6.8%)", "1% higher (7.8%)"]);
     const rows = page.locator("#sensitivity tbody tr");
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toContainText("Not by 65");
-    await expect(rows.nth(0)).toContainText(/44\s*years/);
-    await expect(rows.nth(1)).toContainText(/61\s*years|62\s*years/);
+    await expect(rows.nth(0)).toContainText(/47\s*years/);
+    await expect(rows.nth(1)).toContainText(/62\s*years, 7 months/);
   });
 
   test("sensitivity table shows the contribution needed in target mode", async ({ page }) => {
@@ -503,7 +505,7 @@ test.describe("coast path and sensitivity", () => {
     await expect(row).toHaveCount(1);
     await expect(row.locator("th")).toHaveText("Monthly contribution needed");
     await expect(row.locator("td")).toHaveCount(3);
-    await expect(row.locator("td").nth(1)).toContainText("$1,072/mo");
+    await expect(row.locator("td").nth(1)).toContainText("$1,121/mo");
   });
 });
 
@@ -563,7 +565,7 @@ test.describe("simulated ups and downs", () => {
     const rows = page.locator("#riskList > div");
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(0)).toContainText("Full retirement age");
-    await expect(rows.nth(1)).toContainText("Chance that stopping at 44 years");
+    await expect(rows.nth(1)).toContainText("Chance that stopping at 47 years");
     await expect(rows.nth(2)).toContainText("90% confidence");
     await expect(page.locator("#riskHint")).toContainText("1,000 simulated markets");
     await expect(page.locator("#cardRisk")).not.toHaveClass(/is-busy/);

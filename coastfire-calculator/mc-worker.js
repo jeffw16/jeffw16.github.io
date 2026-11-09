@@ -1,6 +1,6 @@
 // Runs the Monte Carlo risk calculation off the main thread.
 // Messages in: { id, inputs }. Messages out: { id, risk }.
-import { createRiskRunner } from "./risk.js?v=69c09084b9";
+import { createRiskRunner } from "./risk.js?v=4ce82ec087";
 
 const run = createRiskRunner();
 

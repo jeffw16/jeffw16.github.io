@@ -59,7 +59,7 @@ describe("resolveReturn", () => {
     for (const p of PORTFOLIOS) assert.equal(resolveReturn(p.id), p.rate);
   });
   it("defaults to the S&P 500 at 7% real", () => {
-    assert.equal(resolveReturn("sp500"), 0.07);
+    assert.equal(resolveReturn("sp500"), 0.068);
   });
   it("uses the custom rate for 'custom'", () => {
     assert.equal(resolveReturn("custom", 0.031), 0.031);
@@ -67,9 +67,9 @@ describe("resolveReturn", () => {
     assert.equal(resolveReturn("custom", -0.01), -0.01);
   });
   it("falls back to the default for a missing custom rate or unknown id", () => {
-    assert.equal(resolveReturn("custom", NaN), 0.07);
-    assert.equal(resolveReturn("custom", undefined), 0.07);
-    assert.equal(resolveReturn("nope"), 0.07);
+    assert.equal(resolveReturn("custom", NaN), 0.068);
+    assert.equal(resolveReturn("custom", undefined), 0.068);
+    assert.equal(resolveReturn("nope"), 0.068);
   });
 });
 

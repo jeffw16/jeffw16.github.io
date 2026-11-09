@@ -10,7 +10,7 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=69c09084b9";
+} from "./calc.js?v=4ce82ec087";
 import {
   requiredBalance,
   spendingFromRequired,
@@ -18,14 +18,14 @@ import {
   earlyAccessGuidance,
   suggestedWithdrawalRate,
   PLAN_TO_AGE,
-} from "./retirement.js?v=69c09084b9";
-import { IRS_LIMITS } from "./limits.js?v=69c09084b9";
-import { computeScenario, sensitivity } from "./scenario.js?v=69c09084b9";
-import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=69c09084b9";
-import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=69c09084b9";
-import { TAX_YEAR, FILING_STATUSES, estimateRates } from "./tax.js?v=69c09084b9";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=69c09084b9";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery, followDefaults, fillFollowers } from "./persist.js?v=69c09084b9";
+} from "./retirement.js?v=4ce82ec087";
+import { IRS_LIMITS } from "./limits.js?v=4ce82ec087";
+import { computeScenario, sensitivity } from "./scenario.js?v=4ce82ec087";
+import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=4ce82ec087";
+import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=4ce82ec087";
+import { TAX_YEAR, FILING_STATUSES, estimateRates } from "./tax.js?v=4ce82ec087";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=4ce82ec087";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery, followDefaults, fillFollowers } from "./persist.js?v=4ce82ec087";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -797,7 +797,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=69c09084b9", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=4ce82ec087", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;
