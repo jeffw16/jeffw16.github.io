@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your retirement accounts (401(k), 403(b), 457(b), TSP, IRA, HSA) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=4ce82ec087">
+  <link rel="stylesheet" href="style.css?v=1e76cdf33f">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=4ce82ec087"></script>
+  <script type="module" src="app.js?v=1e76cdf33f"></script>
 </head>
 <body>
   <main class="page">
@@ -326,6 +326,22 @@
             <label for="ssStartAge">Age you started working</label>
             <input id="ssStartAge" name="ssStartAge" type="number" inputmode="numeric" min="14" max="70" step="1" value="22">
             <p class="hint">Years of earnings run from here to your retirement age.</p>
+          </div>
+
+          <div class="field">
+            <label for="ssWageGrowth">Real wage growth per year</label>
+            <div class="affix" data-suffix="%">
+              <input id="ssWageGrowth" name="ssWageGrowth" type="number" inputmode="decimal" min="-2" max="3" step="0.1" value="1">
+            </div>
+            <p class="hint">How much faster average wages grow than prices. The benefit formula rises with wages until you turn 62; about 1% is the long-run norm. Use 0% for today's formula as is.</p>
+          </div>
+
+          <div class="field">
+            <div class="check-row">
+              <input id="ssCut" name="ssCut" type="checkbox">
+              <label for="ssCut">Plan for a cut if the trust fund runs out</label>
+            </div>
+            <p class="hint" id="ssCutHint"></p>
           </div>
 
           <dl class="tax-rows" id="ssRows"></dl>

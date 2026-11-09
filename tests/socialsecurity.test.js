@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   BEND_POINTS, TAXABLE_MAX, claimingFactor, primaryInsuranceAmount, estimateBenefit,
+  wageGrowthFactor, DEFAULT_REAL_WAGE_GROWTH, TRUST_FUND,
 } from "../coastfire-calculator/socialsecurity.js";
 
 const near = (a, b, tol = 1e-9) => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b}`);
@@ -91,5 +92,59 @@ describe("estimateBenefit", () => {
   });
   it("is 0 years when retirement is before starting work", () => {
     assert.equal(estimateBenefit({ ...base, retirementAge: 20 }).years, 0);
+  });
+});
+
+describe("wageGrowthFactor", () => {
+  it("compounds real wage growth until 62", () => {
+    near(wageGrowthFactor(30, 0.01), 1.01 ** 32);
+    near(wageGrowthFactor(61.5, 0.01), 1.01 ** 0.5);
+  });
+  it("is 1 at or after 62, or without inputs", () => {
+    assert.equal(wageGrowthFactor(62, 0.01), 1);
+    assert.equal(wageGrowthFactor(70, 0.01), 1);
+    assert.equal(wageGrowthFactor(NaN, 0.01), 1);
+    assert.equal(wageGrowthFactor(30, NaN), 1);
+  });
+  it("defaults to about the Trustees' real-wage differential", () => {
+    assert.equal(DEFAULT_REAL_WAGE_GROWTH, 0.01);
+  });
+});
+
+describe("estimateBenefit: real wage growth and the trust fund", () => {
+  const base = { annualEarnings: 60000, startAge: 22, retirementAge: 65, claimAge: 67 };
+  it("is unchanged without a current age or growth (today's formula)", () => {
+    const e = estimateBenefit(base);
+    assert.equal(e.todayPia, e.pia);
+    assert.equal(e.wageFactor, 1);
+    assert.equal(estimateBenefit({ ...base, currentAge: 30 }).monthly, e.monthly);
+  });
+  it("grows a 30-year-old's benefit about 37% at 1% real wage growth (regression: held at today's formula)", () => {
+    const today = estimateBenefit(base);
+    const grown = estimateBenefit({ ...base, currentAge: 30, realWageGrowth: 0.01 });
+    assert.equal(grown.todayPia, today.pia);
+    assert.equal(grown.pia, Math.floor(today.pia * 1.01 ** 32 * 10) / 10);
+    assert.equal(grown.monthly, Math.floor(grown.pia));
+    assert.ok(grown.annual / today.annual > 1.36 && grown.annual / today.annual < 1.39);
+  });
+  it("doesn't grow the benefit of someone already 62", () => {
+    assert.equal(estimateBenefit({ ...base, currentAge: 64, claimAge: 67, realWageGrowth: 0.01 }).monthly, estimateBenefit(base).monthly);
+  });
+  it("applies the payable share for a trust-fund shortfall", () => {
+    const e = estimateBenefit({ ...base, payableShare: TRUST_FUND.payableShare });
+    assert.equal(e.fullMonthly, 2345);
+    assert.equal(e.monthly, Math.floor(2345.8 * 0.77));
+    assert.equal(e.annual, e.monthly * 12);
+  });
+  it("combines wage growth, the claiming adjustment and the cut", () => {
+    const e = estimateBenefit({ ...base, claimAge: 62, currentAge: 40, realWageGrowth: 0.01, payableShare: 0.77 });
+    assert.equal(e.monthly, Math.floor(e.pia * 0.7 * 0.77));
+    assert.equal(e.fullMonthly, Math.floor(e.pia * 0.7));
+  });
+  it("ignores a payable share outside 0-1", () => {
+    assert.equal(estimateBenefit({ ...base, payableShare: 1.5 }).monthly, estimateBenefit(base).monthly);
+  });
+  it("uses the 2025 Trustees Report's projection", () => {
+    assert.deepEqual({ ...TRUST_FUND }, { depletionYear: 2033, payableShare: 0.77 });
   });
 });

@@ -10,7 +10,7 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=4ce82ec087";
+} from "./calc.js?v=1e76cdf33f";
 import {
   requiredBalance,
   spendingFromRequired,
@@ -18,14 +18,14 @@ import {
   earlyAccessGuidance,
   suggestedWithdrawalRate,
   PLAN_TO_AGE,
-} from "./retirement.js?v=4ce82ec087";
-import { IRS_LIMITS } from "./limits.js?v=4ce82ec087";
-import { computeScenario, sensitivity } from "./scenario.js?v=4ce82ec087";
-import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=4ce82ec087";
-import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, estimateBenefit } from "./socialsecurity.js?v=4ce82ec087";
-import { TAX_YEAR, FILING_STATUSES, estimateRates } from "./tax.js?v=4ce82ec087";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=4ce82ec087";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery, followDefaults, fillFollowers } from "./persist.js?v=4ce82ec087";
+} from "./retirement.js?v=1e76cdf33f";
+import { IRS_LIMITS } from "./limits.js?v=1e76cdf33f";
+import { computeScenario, sensitivity } from "./scenario.js?v=1e76cdf33f";
+import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=1e76cdf33f";
+import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, TRUST_FUND, estimateBenefit } from "./socialsecurity.js?v=1e76cdf33f";
+import { TAX_YEAR, FILING_STATUSES, estimateRates } from "./tax.js?v=1e76cdf33f";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=1e76cdf33f";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery, followDefaults, fillFollowers } from "./persist.js?v=1e76cdf33f";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -130,8 +130,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 // ---------- Saved values ----------
 
 // Form fields remembered in localStorage, by name.
-const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "bridgeTaxRate", "bridgeReturn", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility", "filingStatus", "stateTax", "rothShare", "ssEarnings", "ssStartAge", "megaBackdoor", "megaContribution", "otherContribution", "employerContribution"];
-const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], megaBackdoor: ["off", "on"], returnModel: ["fixed", "montecarlo", "historical"], filingStatus: FILING_STATUSES.map((s) => s.id), portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
+const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "bridgeTaxRate", "bridgeReturn", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility", "filingStatus", "stateTax", "rothShare", "ssEarnings", "ssStartAge", "ssWageGrowth", "ssCut", "megaBackdoor", "megaContribution", "otherContribution", "employerContribution"];
+const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], megaBackdoor: ["off", "on"], ssCut: ["off", "on"], returnModel: ["fixed", "montecarlo", "historical"], filingStatus: FILING_STATUSES.map((s) => s.id), portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
 
 // Checkboxes are saved as "on" / "off".
 const isCheckbox = (name) => form.elements[name].type === "checkbox";
@@ -328,6 +328,7 @@ function validate(i) {
   check("stateTax", Number.isFinite(num("stateTax")) && num("stateTax") >= 0 && num("stateTax") <= 20, "Enter a state tax rate from 0% to 20%.");
   check("rothShare", Number.isFinite(num("rothShare")) && num("rothShare") >= 0 && num("rothShare") <= 100, "Enter a tax-free share from 0% to 100%.");
   check("benefit", Number.isFinite(i.benefit) && i.benefit >= 0, "Enter a benefit of $0 or more per year.");
+  check("ssWageGrowth", Number.isFinite(num("ssWageGrowth")) && num("ssWageGrowth") >= -2 && num("ssWageGrowth") <= 3, "Enter a real wage growth from -2% to 3%.");
   check("benefitAge", Number.isFinite(i.benefitAge) && i.benefitAge >= 50 && i.benefitAge <= DEFAULT_MAX_AGE, "Benefit start age must be between 50 and 100.");
   const covered = benefitCoversSpending({ spending: i.spending, benefit: i.benefit, benefitAge: i.benefitAge, retireAge: i.retirementAge });
   setFireLock(covered, i.benefitAge);
@@ -524,13 +525,21 @@ $("useSwr").addEventListener("click", () => {
 // ---------- Social Security estimate ----------
 
 let ssEstimate = null;
+const pctOne = (value) => `${amountFormat.format(value)}%`;
+const signedPercent = (x) => `${x >= 0 ? "+" : "\u2212"}${(Math.abs(x) * 100).toFixed(1)}%`;
 
 function renderSs(i) {
   const dialog = $("ssDialog");
   const earnings = Number.isFinite(num("ssEarnings")) && num("ssEarnings") > 0 ? num("ssEarnings") : num("salary");
-  ssEstimate = estimateBenefit({ annualEarnings: earnings, startAge: num("ssStartAge"), retirementAge: i.retirementAge, claimAge: i.benefitAge });
+  const wageGrowth = num("ssWageGrowth") / 100;
+  const cut = $("ssCut").checked;
+  ssEstimate = estimateBenefit({
+    annualEarnings: earnings, startAge: num("ssStartAge"), retirementAge: i.retirementAge, claimAge: i.benefitAge,
+    currentAge: i.age, realWageGrowth: Number.isFinite(wageGrowth) ? wageGrowth : 0, payableShare: cut ? TRUST_FUND.payableShare : 1,
+  });
   if (!dialog.open) return;
   $("applySs").disabled = !ssEstimate || !ssEstimate.eligible;
+  $("ssCutHint").textContent = `The trust fund that pays retirement benefits is projected to run out in ${TRUST_FUND.depletionYear}; after that, taxes coming in would pay about ${Math.round(TRUST_FUND.payableShare * 100)}% of benefits unless Congress acts. This applies that share to your whole benefit.`;
   $("ssIntro").textContent = `${SS_YEAR} Social Security formula for your own retirement benefit, in today's dollars. An estimate, not your actual record.`;
   const rows = [];
   let note = "";
@@ -544,8 +553,14 @@ function renderSs(i) {
       [`Years of earnings (up to ${COUNTED_YEARS} count)`, String(e.years)],
       ["Yearly earnings counted", money.format(e.countedEarnings)],
       ["Average monthly earnings", money.format(e.aime)],
-      ["Monthly benefit at full retirement age (67)", money.format(e.pia)],
+      [`Monthly benefit at full retirement age (67)${e.wageFactor !== 1 ? ", today's formula" : ""}`, money.format(e.todayPia)],
+      ...(e.wageFactor !== 1
+        ? [[`Growth with real wages until 62 (${Math.round(Math.max(0, EARLIEST_AGE - i.age))} years at ${pctOne(num("ssWageGrowth"))})`, signedPercent(e.wageFactor - 1)]]
+        : []),
       [`Adjustment for claiming at ${i.benefitAge}`, `${(e.factor * 100).toFixed(1)}%`],
+      ...(e.payableShare < 1
+        ? [["Monthly benefit as scheduled", money.format(e.fullMonthly)], [`Cut if the trust fund runs out (to ${Math.round(e.payableShare * 100)}%)`, money.format(e.monthly - e.fullMonthly)]]
+        : []),
       ["Monthly benefit", money.format(e.monthly)],
       ["Yearly benefit", money.format(e.annual)],
     );
@@ -563,7 +578,7 @@ function renderSs(i) {
     row.append(dt, dd);
     return row;
   }));
-  $("ssNote").textContent = note + (note ? " " : "") + "Assumes steady earnings and a birth year of 1960 or later. Your statement at ssa.gov/myaccount is more accurate.";
+  $("ssNote").textContent = note + (note ? " " : "") + "Assumes your earnings keep pace with average wages and a birth year of 1960 or later. Your statement at ssa.gov/myaccount is more accurate.";
 }
 
 wireDialog("ssDialog", "openSsModal", ["closeSs", "closeSsX"], () => renderSs(readInputs()));
@@ -797,7 +812,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=4ce82ec087", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=1e76cdf33f", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;
