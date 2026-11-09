@@ -152,3 +152,34 @@ describe("decodeQuery", () => {
     assert.equal(defaults.age, "30");
   });
 });
+
+import { followDefaults, fillFollowers } from "../coastfire-calculator/persist.js";
+
+describe("fields that follow another field", () => {
+  const follows = { bridgeTaxRate: "taxRate" };
+  const defaults = { taxRate: "10", bridgeTaxRate: "10", swr: "4" };
+  it("links carry the follower only when it differs from its leader", () => {
+    const same = { taxRate: "15", bridgeTaxRate: "15", swr: "4" };
+    assert.equal(encodeQuery(same, followDefaults(defaults, same, follows)), "?taxRate=15");
+    const differ = { taxRate: "15", bridgeTaxRate: "10", swr: "4" };
+    assert.equal(encodeQuery(differ, followDefaults(defaults, differ, follows)), "?taxRate=15&bridgeTaxRate=10");
+  });
+  it("round-trips through a link", () => {
+    for (const values of [{ taxRate: "15", bridgeTaxRate: "15", swr: "4" }, { taxRate: "15", bridgeTaxRate: "10", swr: "4" }, { taxRate: "10", bridgeTaxRate: "7", swr: "3.5" }]) {
+      const search = encodeQuery(values, followDefaults(defaults, values, follows));
+      const decoded = decodeQuery(search, defaults);
+      assert.deepEqual(fillFollowers(decoded, [...new URLSearchParams(search).keys()], follows), values);
+    }
+  });
+  it("an old link or save without the follower gives it the leader's value", () => {
+    assert.deepEqual(fillFollowers({ taxRate: "15", bridgeTaxRate: "10", swr: "4" }, ["taxRate"], follows), { taxRate: "15", bridgeTaxRate: "15", swr: "4" });
+  });
+  it("keeps a follower that was given", () => {
+    assert.deepEqual(fillFollowers({ taxRate: "15", bridgeTaxRate: "7" }, ["taxRate", "bridgeTaxRate"], follows), { taxRate: "15", bridgeTaxRate: "7" });
+  });
+  it("doesn't mutate its inputs", () => {
+    const values = Object.freeze({ taxRate: "15", bridgeTaxRate: "10" });
+    assert.doesNotThrow(() => fillFollowers(values, [], follows));
+    assert.doesNotThrow(() => followDefaults(Object.freeze({ ...defaults }), values, follows));
+  });
+});

@@ -113,3 +113,21 @@ export function estimateRate({ spending, benefit = 0, status = DEFAULT_FILING_ST
   const breakdown = at(hi);
   return { rate: breakdown.total / breakdown.withdrawal, withdrawal: breakdown.withdrawal, breakdown };
 }
+
+/**
+ * Estimated rates for both phases of retirement: `rate` once the benefit has
+ * started (at `max(retireAge, benefitAge)`, with the benefit counted) and
+ * `bridgeRate` for the years before it, when withdrawals cover all spending
+ * (at `retireAge`). With no benefit, or one that has started by retirement,
+ * there is no bridge and `bridgeRate` equals `rate`. Each is the full
+ * estimateRate result, plus the `over65` it assumed, under `post` / `bridge`.
+ */
+export function estimateRates({ spending, benefit = 0, benefitAge, retireAge, status = DEFAULT_FILING_STATUS, stateRate = 0, taxFreeShare = 0 }) {
+  const common = { spending, status, stateRate, taxFreeShare };
+  const postAge = benefit > 0 ? Math.max(retireAge, benefitAge) : retireAge;
+  const phase = (phaseBenefit, over65) => ({ ...estimateRate({ ...common, benefit: phaseBenefit, over65 }), over65 });
+  const post = phase(benefit, postAge >= 65);
+  const hasBridge = benefit > 0 && benefitAge > retireAge;
+  const bridge = hasBridge ? phase(0, retireAge >= 65) : post;
+  return { rate: post.rate, bridgeRate: bridge.rate, hasBridge, post, bridge };
+}

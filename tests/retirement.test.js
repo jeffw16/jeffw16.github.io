@@ -9,6 +9,11 @@ import {
   requiredBalanceFn,
   earlyAccessGuidance,
   EARLY_ACCESS_AGE,
+  bridgeRate,
+  DEFAULT_BRIDGE_RETURN,
+  suggestedWithdrawalRate,
+  SWR_GUIDELINES,
+  PLAN_TO_AGE,
 } from "../coastfire-calculator/retirement.js";
 import { balanceWithContrib } from "../coastfire-calculator/calc.js";
 
@@ -90,7 +95,87 @@ describe("requiredBalance", () => {
   });
 });
 
+describe("bridgeRate", () => {
+  it("is the bridge return when it is below the portfolio return", () => {
+    assert.equal(bridgeRate(0.07, 0.02), 0.02);
+  });
+  it("never exceeds the portfolio return", () => {
+    assert.equal(bridgeRate(0.04, 0.06), 0.04);
+  });
+  it("falls back to the portfolio return without a bridge return", () => {
+    assert.equal(bridgeRate(0.07, undefined), 0.07);
+    assert.equal(bridgeRate(0.07, NaN), 0.07);
+  });
+  it("defaults to about a TIPS ladder's real yield", () => {
+    assert.equal(DEFAULT_BRIDGE_RETURN, 0.02);
+  });
+});
+
+describe("requiredBalance: bridge return", () => {
+  const withBridge = { ...need, taxRate: 0, benefit: 20_000, benefitAge: 67, retireAge: 45 };
+  it("prices the bridge years at the bridge return", () => {
+    close(requiredBalance({ ...withBridge, bridgeReturn: 0.02 }), 20_000 / 0.04 + 20_000 * annuityFactor(0.02, 22 * 12));
+  });
+  it("needs more at a safe bridge return than at the portfolio return", () => {
+    // Regression: the bridge used to be priced at the full expected return (7%),
+    // understating the need by about 13% for retiring at 45 with a benefit at 67.
+    const safe = requiredBalance({ ...withBridge, taxRate: 0.1, bridgeReturn: 0.03 });
+    const risky = requiredBalance({ ...withBridge, taxRate: 0.1 });
+    assert.ok(safe > risky);
+    close(risky, 809_151, 1e-6);
+    assert.ok(safe / risky > 1.12 && safe / risky < 1.14);
+  });
+  it("ignores the bridge return when there are no bridge years", () => {
+    const started = { ...withBridge, benefitAge: 62, retireAge: 65 };
+    assert.equal(requiredBalance({ ...started, bridgeReturn: 0 }), requiredBalance(started));
+    assert.equal(requiredBalance({ ...need, bridgeReturn: 0 }), requiredBalance(need));
+  });
+  it("uses the portfolio return when the bridge return is higher", () => {
+    assert.equal(requiredBalance({ ...withBridge, bridgeReturn: 0.1 }), requiredBalance(withBridge));
+  });
+});
+
+describe("requiredBalance: bridge tax rate", () => {
+  const withBridge = { ...need, benefit: 20_000, benefitAge: 67, retireAge: 45, bridgeReturn: 0.02 };
+  it("grosses bridge withdrawals up at the bridge rate and later ones at the main rate", () => {
+    const r = requiredBalance({ ...withBridge, taxRate: 0.027, bridgeTaxRate: 0.071 });
+    const post = 20_000 / (1 - 0.027);
+    const pre = 40_000 / (1 - 0.071);
+    close(r, post / 0.04 + (pre - post) * annuityFactor(0.02, 22 * 12));
+  });
+  it("defaults the bridge rate to the main rate", () => {
+    assert.equal(requiredBalance({ ...withBridge, bridgeTaxRate: 0.1 }), requiredBalance(withBridge));
+  });
+  it("ignores the bridge rate when there are no bridge years", () => {
+    assert.equal(requiredBalance({ ...need, bridgeTaxRate: 0.5 }), requiredBalance(need));
+  });
+  it("never lets the bridge lower the need below the post-benefit amount", () => {
+    // A tiny benefit taxed more heavily later: the safe-withdrawal draw already covers the bridge.
+    const r = requiredBalance({ ...need, benefit: 1_000, benefitAge: 67, retireAge: 60, taxRate: 0.3, bridgeTaxRate: 0 });
+    close(r, 39_000 / 0.7 / 0.04);
+  });
+  it("is NaN for a bad bridge rate when there are bridge years", () => {
+    assert.ok(Number.isNaN(requiredBalance({ ...withBridge, bridgeTaxRate: 1 })));
+  });
+});
+
 describe("spendingFromRequired", () => {
+  it("inverts requiredBalance with a bridge return and a separate bridge tax rate", () => {
+    for (const [taxRate, bridgeTaxRate] of [[0.03, 0.07], [0.16, 0.13], [0.1, 0.1]]) {
+      for (const bridgeReturn of [0, 0.02, 0.05]) {
+        for (const retireAge of [40, 55, 66]) {
+          for (const spending of [25_000, 60_000, 120_000]) {
+            const p = { spending, taxRate, bridgeTaxRate, swr: 0.035, benefit: 20_000, benefitAge: 67, retireAge, annualReturn: 0.07, bridgeReturn };
+            const { spending: _, ...rest } = p;
+            close(spendingFromRequired({ ...rest, required: requiredBalance(p) }), spending, 1e-7);
+          }
+        }
+      }
+    }
+  });
+  it("is NaN for a bad bridge tax rate", () => {
+    assert.ok(Number.isNaN(spendingFromRequired({ ...need, bridgeTaxRate: 1, required: 1 })));
+  });
   it("inverts requiredBalance on a grid", () => {
     for (const taxRate of [0, 0.1, 0.25]) {
       for (const swr of [0.03, 0.04]) {
@@ -157,6 +242,32 @@ describe("requiredBalanceFn", () => {
   });
   it("falls back to scale 1 for a non-finite anchor value", () => {
     close(requiredBalanceFn(need, 65, NaN)(65), requiredBalance(need));
+  });
+});
+
+describe("suggestedWithdrawalRate", () => {
+  it("is 4% for retirements of 30 years or less", () => {
+    assert.equal(suggestedWithdrawalRate(PLAN_TO_AGE - 30), 0.04);
+    assert.equal(suggestedWithdrawalRate(70), 0.04);
+  });
+  it("matches each guideline row", () => {
+    for (const [years, rate] of SWR_GUIDELINES) assert.equal(suggestedWithdrawalRate(PLAN_TO_AGE - years), rate);
+  });
+  it("interpolates between rows, to 0.1 point", () => {
+    assert.equal(suggestedWithdrawalRate(PLAN_TO_AGE - 35), 0.039); // halfway from 4.0% to 3.7%, rounded
+    assert.equal(suggestedWithdrawalRate(PLAN_TO_AGE - 45), 0.036);
+  });
+  it("holds the last row beyond it", () => {
+    assert.equal(suggestedWithdrawalRate(25), SWR_GUIDELINES.at(-1)[1]);
+  });
+  it("falls as retirement starts earlier", () => {
+    for (let age = 30; age < 70; age++) assert.ok(suggestedWithdrawalRate(age) <= suggestedWithdrawalRate(age + 1));
+  });
+  it("takes a different planning age", () => {
+    assert.equal(suggestedWithdrawalRate(60, 100), 0.037);
+  });
+  it("is NaN for a missing age", () => {
+    assert.ok(Number.isNaN(suggestedWithdrawalRate(NaN)));
   });
 });
 
