@@ -2,7 +2,7 @@ import { test, expect, URL_PATH, CHART_JS } from "./fixtures.js";
 import {
   coastTarget, findCoastAge, findFireAge, requiredMonthlyContribution, resolveReturn, DEFAULT_PORTFOLIO_ID,
 } from "../coastfire-calculator/calc.js";
-import { requiredBalance, requiredBalanceFn } from "../coastfire-calculator/retirement.js";
+import { requiredBalance, requiredBalanceFn, earlyAccessNeed } from "../coastfire-calculator/retirement.js";
 import { formatAge } from "../coastfire-calculator/format.js";
 
 // The default portfolio's real return (the S&P 500 preset).
@@ -140,6 +140,51 @@ test("early-access notes follow the retirement age", async ({ page }) => {
   await expect(note).toContainText("72(t)");
   await page.locator("#targetAge").fill("60");
   await expect(note).toBeHidden();
+});
+
+test.describe("money you can reach before 59½", () => {
+  const need45 = { ...need, retireAge: 45, age: 30 };
+  // A $300,000 balance keeps a target age of 45 reachable within the contribution limit.
+  const target = async (page, age) => {
+    await page.locator("#balance").fill("300,000");
+    await page.locator('input[name="mode"][value="target"]').check();
+    await page.locator("#targetAge").fill(String(age));
+  };
+
+  test("shows what the years before 59½ need, and hides it from 59½ on", async ({ page }) => {
+    const note = page.locator("#earlyNeed");
+    await target(page, 45);
+    await expect(note).toContainText("Retiring at 45 years leaves 14 years 6 months until 59½.");
+    await expect(note).toContainText(money(earlyAccessNeed(need45).needed));
+    await expect(note).not.toHaveClass(/warn/);
+    await page.locator("#targetAge").fill("60");
+    await expect(note).toBeHidden();
+  });
+
+  test("compares accessible savings and warns about a shortfall before 55", async ({ page }) => {
+    const note = page.locator("#earlyNeed");
+    await target(page, 45);
+    await page.locator("#earlyAccessible").fill("20,000");
+    const e = earlyAccessNeed({ ...need45, accessible: 20_000 });
+    await expect(note).toContainText(`Your $20,000 of savings you can use before 59½ should grow to about ${money(e.accessibleAtRetirement)} by then, ${money(e.shortfall)} short.`);
+    await expect(note).toHaveClass(/warn/);
+    await page.locator("#earlyAccessible").fill("300,000");
+    await expect(note).toContainText("enough to cover it");
+    await expect(note).not.toHaveClass(/warn/);
+  });
+
+  test("doesn't warn in the Rule of 55 years", async ({ page }) => {
+    await target(page, 57);
+    await page.locator("#earlyAccessible").fill("1,000");
+    await expect(page.locator("#earlyNeed")).toContainText("short");
+    await expect(page.locator("#earlyNeed")).not.toHaveClass(/warn/);
+  });
+
+  test("can't be more than the current balance", async ({ page }) => {
+    await page.locator("#earlyAccessible").fill("60,000"); // the default balance is $50,000
+    await expect(page.locator("#earlyAccessible")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.locator("#error")).toContainText("can't be more than it");
+  });
 });
 
 test("custom portfolio reveals the custom return field", async ({ page }) => {
