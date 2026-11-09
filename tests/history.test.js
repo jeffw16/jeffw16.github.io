@@ -143,3 +143,25 @@ describe("historicalPaths", () => {
     near(first, 1 + realSeries(HISTORY, 0.6)[0].real);
   });
 });
+
+// Regression: the presets' volatilities were 2-3 points below the history the
+// "Replay history" mode uses, so simulated chances of success looked better than
+// the replayed ones. Keep each preset close to its own 1928-2025 numbers.
+describe("portfolio presets match the historical data", () => {
+  const logStats = (series) => {
+    const logs = series.map((row) => Math.log(1 + row.real));
+    const mean = logs.reduce((a, x) => a + x, 0) / logs.length;
+    const sd = Math.sqrt(logs.reduce((a, x) => a + (x - mean) ** 2, 0) / (logs.length - 1));
+    return { median: Math.exp(mean) - 1, sd };
+  };
+  for (const p of PORTFOLIOS) {
+    it(`${p.id}: rate within 0.2 points of the compound real return`, () => {
+      const { median } = logStats(seriesFor(p.id, 0));
+      assert.ok(Math.abs(p.rate - median) <= 0.002, `${p.rate} vs ${median.toFixed(4)}`);
+    });
+    it(`${p.id}: volatility within 0.6 points of the log-return standard deviation`, () => {
+      const { sd } = logStats(seriesFor(p.id, 0));
+      assert.ok(Math.abs(p.volatility - sd) <= 0.006, `${p.volatility} vs ${sd.toFixed(4)}`);
+    });
+  }
+});

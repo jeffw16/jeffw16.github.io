@@ -6,13 +6,17 @@ export const DEFAULT_MAX_AGE = 100;
 // Relative tolerance so floating-point noise doesn't push a crossing a month late.
 const EPSILON = 1e-9;
 
+// Rates are median (compound) real returns and volatilities the yearly standard
+// deviation of log real returns, both close to what history.js's 1928-2025 data gives
+// for each stock/bond mix (tests/history.test.js keeps them within tolerance).
+// The S&P 500 and total-market presets share the S&P 500 data.
 export const PORTFOLIOS = Object.freeze([
-  Object.freeze({ id: "sp500", label: "100% S&P 500", rate: 0.07, volatility: 0.17, note: "Long-run average real return of the S&P 500" }),
-  Object.freeze({ id: "total-market", label: "Total US stock market", rate: 0.068, volatility: 0.17, note: "Broad US equities incl. small/mid caps" }),
-  Object.freeze({ id: "global-80-20", label: "80/20 global stocks/bonds", rate: 0.06, volatility: 0.14, note: "Aggressive diversified portfolio" }),
-  Object.freeze({ id: "target-date", label: "Target-date fund", rate: 0.055, volatility: 0.11, note: "Glide path that de-risks toward retirement" }),
-  Object.freeze({ id: "balanced-60-40", label: "60/40 stocks/bonds", rate: 0.05, volatility: 0.1, note: "Classic balanced portfolio" }),
-  Object.freeze({ id: "conservative-40-60", label: "40/60 stocks/bonds", rate: 0.04, volatility: 0.07, note: "Conservative, bond-heavy portfolio" }),
+  Object.freeze({ id: "sp500", label: "100% S&P 500", rate: 0.068, volatility: 0.19, note: "Real compound return of the S&P 500, 1928\u20132025" }),
+  Object.freeze({ id: "total-market", label: "Total US stock market", rate: 0.068, volatility: 0.19, note: "Broad US equities incl. small/mid caps" }),
+  Object.freeze({ id: "global-80-20", label: "80/20 global stocks/bonds", rate: 0.06, volatility: 0.15, note: "Aggressive diversified portfolio" }),
+  Object.freeze({ id: "target-date", label: "Target-date fund", rate: 0.055, volatility: 0.14, note: "Glide path that de-risks toward retirement" }),
+  Object.freeze({ id: "balanced-60-40", label: "60/40 stocks/bonds", rate: 0.05, volatility: 0.12, note: "Classic balanced portfolio" }),
+  Object.freeze({ id: "conservative-40-60", label: "40/60 stocks/bonds", rate: 0.04, volatility: 0.1, note: "Conservative, bond-heavy portfolio" }),
 ]);
 
 export const DEFAULT_PORTFOLIO_ID = "sp500";
