@@ -1,6 +1,6 @@
 // Pure helpers for how much a retiree needs in retirement accounts: taxes on withdrawals
 // and a Social Security / pension benefit that starts later. No DOM, no globals.
-import { monthlyRate } from "./calc.js?v=1e76cdf33f";
+import { monthlyRate } from "./calc.js?v=aea5148f5a";
 
 /** Withdrawal needed to net `spending` after an effective tax rate. NaN for rates outside [0, 1). */
 export function grossWithdrawal(spending, taxRate) {
@@ -97,6 +97,30 @@ export function requiredBalanceFn(need, anchorAge, anchorValue) {
 }
 
 export const EARLY_ACCESS_AGE = 59.5;
+
+/**
+ * Money needed at `retireAge` that you can withdraw before 59½ without the 10% penalty
+ * (taxable savings, Roth IRA contributions), and how much of it you have. The need is the
+ * present value, at the bridge rate, of every withdrawal from `retireAge` to 59½: the full
+ * spending grossed up at `bridgeTaxRate` before the benefit starts, the shortfall grossed up
+ * at `taxRate` after. `accessible` is the part of today's balance you can already reach,
+ * grown at the portfolio return from `age` with no contributions. Returns { months, needed,
+ * accessibleAtRetirement, shortfall }; months and needed are 0 from 59½ on.
+ */
+export function earlyAccessNeed({ spending, taxRate, bridgeTaxRate = taxRate, benefit = 0, benefitAge = 67, retireAge, annualReturn, bridgeReturn, age, accessible = 0 }) {
+  const months = Math.max(0, Math.round((EARLY_ACCESS_AGE - retireAge) * 12));
+  const rate = bridgeRate(annualReturn, bridgeReturn);
+  const benefitMonth = Math.min(months, benefit > 0 ? Math.max(0, Math.round((benefitAge - retireAge) * 12)) : months);
+  const wPre = grossWithdrawal(spending, bridgeTaxRate);
+  const wPost = grossWithdrawal(Math.max(0, spending - benefit), taxRate);
+  // Payments in months [0, benefitMonth) at wPre, then [benefitMonth, months) at wPost.
+  const before = annuityFactor(rate, benefitMonth);
+  const after = annuityFactor(rate, months) - before;
+  const needed = months > 0 ? wPre * before + wPost * after : 0;
+  const years = Math.max(0, retireAge - age);
+  const accessibleAtRetirement = accessible > 0 && Number.isFinite(years) ? accessible * Math.pow(1 + annualReturn, years) : 0;
+  return { months, needed, accessibleAtRetirement, shortfall: Math.max(0, needed - accessibleAtRetirement) };
+}
 
 /** Which early-withdrawal note applies to a retirement age: "none", "rule-of-55" or "before-55". */
 export function earlyAccessGuidance(retireAge) {

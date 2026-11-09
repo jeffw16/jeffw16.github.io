@@ -10,22 +10,24 @@ import {
   chartEndAge,
   buildSeries,
   splitAge,
-} from "./calc.js?v=1e76cdf33f";
+} from "./calc.js?v=aea5148f5a";
 import {
   requiredBalance,
   spendingFromRequired,
   benefitCoversSpending,
   earlyAccessGuidance,
+  earlyAccessNeed,
+  EARLY_ACCESS_AGE,
   suggestedWithdrawalRate,
   PLAN_TO_AGE,
-} from "./retirement.js?v=1e76cdf33f";
-import { IRS_LIMITS } from "./limits.js?v=1e76cdf33f";
-import { computeScenario, sensitivity } from "./scenario.js?v=1e76cdf33f";
-import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=1e76cdf33f";
-import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, TRUST_FUND, estimateBenefit } from "./socialsecurity.js?v=1e76cdf33f";
-import { TAX_YEAR, FILING_STATUSES, estimateRates } from "./tax.js?v=1e76cdf33f";
-import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=1e76cdf33f";
-import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery, followDefaults, fillFollowers } from "./persist.js?v=1e76cdf33f";
+} from "./retirement.js?v=aea5148f5a";
+import { IRS_LIMITS } from "./limits.js?v=aea5148f5a";
+import { computeScenario, sensitivity } from "./scenario.js?v=aea5148f5a";
+import { createRiskRunner, describeRisk, riskTitle } from "./risk.js?v=aea5148f5a";
+import { SS_YEAR, EARLIEST_AGE, LATEST_AGE, COUNTED_YEARS, MIN_YEARS, TRUST_FUND, estimateBenefit } from "./socialsecurity.js?v=aea5148f5a";
+import { TAX_YEAR, FILING_STATUSES, estimateRates } from "./tax.js?v=aea5148f5a";
+import { parseAmount, groupDigits, formatWithCaret, deleteAcrossComma, formatAge, formatAgeParts, formatAgeOrNote, contributionLabel } from "./format.js?v=aea5148f5a";
+import { STORAGE_KEY, serializeState, parseSavedState, isDefaultState, savedKeys, encodeQuery, decodeQuery, followDefaults, fillFollowers } from "./persist.js?v=aea5148f5a";
 
 const $ = (id) => document.getElementById(id);
 const form = $("inputs");
@@ -130,7 +132,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ch
 // ---------- Saved values ----------
 
 // Form fields remembered in localStorage, by name.
-const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "bridgeTaxRate", "bridgeReturn", "benefit", "benefitAge", "fire", "portfolio", "returnModel", "customReturn", "customVolatility", "filingStatus", "stateTax", "rothShare", "ssEarnings", "ssStartAge", "ssWageGrowth", "ssCut", "megaBackdoor", "megaContribution", "otherContribution", "employerContribution"];
+const FIELDS = ["mode", "age", "balance", "contribution", "targetAge", "retirementAge", "salary", "contributionUnit", "matchRate", "matchCap", "raise", "spending", "swr", "taxRate", "bridgeTaxRate", "bridgeReturn", "benefit", "benefitAge", "earlyAccessible", "fire", "portfolio", "returnModel", "customReturn", "customVolatility", "filingStatus", "stateTax", "rothShare", "ssEarnings", "ssStartAge", "ssWageGrowth", "ssCut", "megaBackdoor", "megaContribution", "otherContribution", "employerContribution"];
 const ALLOWED = { mode: ["contribution", "target"], contributionUnit: ["usd", "pct"], megaBackdoor: ["off", "on"], ssCut: ["off", "on"], returnModel: ["fixed", "montecarlo", "historical"], filingStatus: FILING_STATUSES.map((s) => s.id), portfolio: [...PORTFOLIOS.map((p) => p.id), "custom"] };
 
 // Checkboxes are saved as "on" / "off".
@@ -286,6 +288,7 @@ function readInputs() {
     benefit: numOr0("benefit"),
     benefitAge: num("benefitAge"),
     fire: num("fire"),
+    earlyAccessible: numOr0("earlyAccessible"),
     portfolio,
     annualReturn: resolveReturn(portfolio, num("customReturn") / 100),
     returnModel: $("returnModel").value,
@@ -333,6 +336,8 @@ function validate(i) {
   const covered = benefitCoversSpending({ spending: i.spending, benefit: i.benefit, benefitAge: i.benefitAge, retireAge: i.retirementAge });
   setFireLock(covered, i.benefitAge);
   check("fire", Number.isFinite(i.fire) && (covered ? i.fire >= 0 : i.fire > 0), "Enter a FIRE number above $0.");
+  check("earlyAccessible", i.earlyAccessible >= 0 && (!(i.balance >= 0) || i.earlyAccessible <= i.balance),
+    "Savings you can use before 59½ are part of your current balance, so they can't be more than it.");
   check("customReturn", i.portfolio !== "custom" || (Number.isFinite(num("customReturn")) && num("customReturn") > -100),
     "Enter a custom annual return.");
   check("customVolatility", i.portfolio !== "custom" || (num("customVolatility") >= 0 && num("customVolatility") <= 60),
@@ -722,9 +727,11 @@ function update() {
       + (isTarget && fireAge !== null ? ` · reached at ${formatAge(fireAge)}` : ""),
   });
 
-  const guidance = earlyAccessGuidance(isTarget ? i.targetAge : fireAge ?? Infinity);
+  const earlyAge = isTarget ? i.targetAge : fireAge ?? Infinity;
+  const guidance = earlyAccessGuidance(earlyAge);
   $("earlyNote").hidden = guidance === "none";
   $("earlyNote").textContent = EARLY_NOTES[guidance] ?? "";
+  renderEarlyNeed(i, earlyAge, guidance);
   setCard("cardCoast", {
     value: money.format(coastNow),
     good: alreadyCoast,
@@ -746,6 +753,29 @@ function update() {
   fillSensitivity(i, sensitivity(i));
   if (simulated) requestRisk(i, { quiet });
   else cancelRisk();
+}
+
+/**
+ * How much the years from retirement to 59½ need in money you can reach without the
+ * 10% penalty, and whether the accessible savings entered cover it. Doesn't change the FIRE number.
+ */
+function renderEarlyNeed(i, retireAge, guidance) {
+  const el = $("earlyNeed");
+  if (guidance === "none" || !Number.isFinite(retireAge)) { el.hidden = true; return; }
+  const e = earlyAccessNeed({ ...i, retireAge, accessible: i.earlyAccessible });
+  const { years: y, months: m } = splitAge(e.months / 12);
+  const span = `${y} year${y === 1 ? "" : "s"}${m ? ` ${m} month${m === 1 ? "" : "s"}` : ""}`;
+  const retireText = formatAge(retireAge);
+  const unlock = String(EARLY_ACCESS_AGE).replace(".5", "½");
+  let text = `Retiring at ${retireText} leaves ${span} until ${unlock}. Your withdrawals over that time come to about ${money.format(e.needed)} ` +
+    `(valued at retirement, in today's dollars). Taken from a 401(k), 403(b) or IRA, they'd owe the 10% penalty unless you use one of the options above.`;
+  if (i.earlyAccessible > 0) {
+    text += ` Your ${money.format(i.earlyAccessible)} of savings you can use before ${unlock} should grow to about ${money.format(e.accessibleAtRetirement)} by then` +
+      (e.shortfall > 0 ? `, ${money.format(e.shortfall)} short.` : ", enough to cover it.");
+  }
+  el.textContent = text;
+  el.classList.toggle("warn", guidance === "before-55" && i.earlyAccessible > 0 && e.shortfall > 0);
+  el.hidden = false;
 }
 
 const EARLY_NOTES = {
@@ -812,7 +842,7 @@ function getWorker(id, inputs) {
   if (workerFailed) return null;
   if (riskWorker) return riskWorker;
   try {
-    riskWorker = new Worker(new URL("./mc-worker.js?v=1e76cdf33f", import.meta.url), { type: "module" });
+    riskWorker = new Worker(new URL("./mc-worker.js?v=aea5148f5a", import.meta.url), { type: "module" });
     riskWorker.onmessage = (event) => applyRisk(event.data.id, event.data.risk, chartContext?.inputs);
     riskWorker.onerror = () => {
       workerFailed = true;

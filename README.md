@@ -35,7 +35,10 @@ log-return spread of the same stock/bond mix in the 1928–2025 data below (a un
 history: real (after-inflation) returns of the S&P 500 and 10-year Treasuries, 1928–2025, mixed to match the
 portfolio, starting in every year (later years wrap around to 1928) — with the worst start year named. Sources
 (NYU/Damodaran returns, BLS CPI-U via FRED, December-to-December) are listed in `history.js`. Early-withdrawal
-penalties are not modeled.
+penalties are not modeled in the FIRE number, but retiring before 59½ shows how much the withdrawals until then come
+to (valued at retirement at the bridge return), money that must come from somewhere you can reach without the 10%
+penalty. An optional "Savings you can use before 59½" (part of the current balance: taxable savings, Roth IRA
+contributions) is grown at the portfolio return and compared with it, with a warning when it falls short before 55.
 
 The tax-rate field is a plain number (10% by default); with a benefit, it is the rate once the benefit starts and a
 second field holds the rate for the bridge years before it (it follows the first in saves and links that don't
