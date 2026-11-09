@@ -1,6 +1,6 @@
 // Pure helpers for saving form values to localStorage and to shareable URLs. No DOM,
 // storage or location access: app.js reads/writes the actual storage, form and URL.
-import { groupDigits } from "./format.js?v=88058eeffc";
+import { groupDigits } from "./format.js?v=69c09084b9";
 
 export const STORAGE_KEY = "coastfire-calculator:v1";
 const VERSION = 1;
@@ -92,4 +92,29 @@ export function decodeQuery(search, defaults, allowed = {}, kinds = {}) {
     found = true;
   }
   return found ? result : null;
+}
+
+// ---------- Fields that default to another field ----------
+// `follows` maps a field to the field whose value it takes when it isn't given,
+// e.g. { bridgeTaxRate: "taxRate" }. Saves and links made before the follower
+// existed then keep meaning what they did, and a link only carries the follower
+// when it differs from its leader.
+
+/** `defaults` with each follower's default replaced by its leader's value in `values`. */
+export function followDefaults(defaults, values, follows) {
+  const result = { ...defaults };
+  for (const [field, leader] of Object.entries(follows)) {
+    if (typeof values[leader] === "string") result[field] = values[leader];
+  }
+  return result;
+}
+
+/** A copy of `values` where each follower missing from `presentKeys` takes its leader's value. */
+export function fillFollowers(values, presentKeys, follows) {
+  const present = new Set(presentKeys);
+  const result = { ...values };
+  for (const [field, leader] of Object.entries(follows)) {
+    if (!present.has(field) && typeof result[leader] === "string") result[field] = result[leader];
+  }
+  return result;
 }

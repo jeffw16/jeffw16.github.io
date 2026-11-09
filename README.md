@@ -11,9 +11,13 @@ contribution needed to retire by a given age ("What should I contribute?"). Inpu
 browser, and **Copy link** shares the exact scenario in the URL (a link with parameters defines the whole scenario).
 
 Model assumptions: every amount is in today's dollars and every return is real (after inflation), compounded
-monthly, with contributions at month end. FIRE number = spending grossed up for one effective tax rate, less
-any Social Security / pension (which offsets spending dollar for dollar from its start age; retiring earlier
-needs extra to bridge the gap), divided by the safe withdrawal rate. Contributions can be dollars or a percent
+monthly, with contributions at month end. FIRE number = spending less any Social Security / pension (which
+offsets spending dollar for dollar from its start age), grossed up for an effective tax rate, divided by the safe
+withdrawal rate. Retiring before the benefit starts needs extra for the bridge years: the full spending, grossed
+up at its own tax rate (withdrawals then cover everything, with no benefit), funded at a safe real "bridge
+return" (2% by default, about a TIPS ladder, and never above the portfolio's return) rather than the portfolio's
+expected return. Below the withdrawal-rate field, retirements longer than 30 years (planning to age 95) get a
+suggested lower rate: about 3.7% for 40 years, 3.5% for 50 and 3.3% for 60, from historical studies. Contributions can be dollars or a percent
 of salary, with yearly real raises. The main contribution is your own money in a workplace plan (401(k), 403(b),
 457(b), TSP): it alone earns the employer match and is capped at the 2026 IRS deferral limit for each year's age (catch-ups
 included; the excess isn't counted, and in "What should I contribute?" a target that needs more is unreachable). With
@@ -32,8 +36,10 @@ portfolio, starting in every year (later years wrap around to 1928) — with the
 (NYU/Damodaran returns, BLS CPI-U via FRED, December-to-December) are listed in `history.js`. Early-withdrawal
 penalties are not modeled.
 
-The tax-rate field is a plain number (10% by default); below it the calculator estimates a rate from your spending,
-benefit, filing status, state tax and tax-free (Roth) share, using the 2025 federal brackets and standard
+The tax-rate field is a plain number (10% by default); with a benefit, it is the rate once the benefit starts and a
+second field holds the rate for the bridge years before it (it follows the first in saves and links that don't
+give it). Below them the calculator estimates both rates from your spending, benefit, filing status, state tax and
+tax-free (Roth) share, using the 2025 federal brackets and standard
 deduction (sources in `tax.js`), and "Fine-tune" opens a modal with the full breakdown. Capital gains rates,
 itemized deductions and state deductions are not modeled.
 

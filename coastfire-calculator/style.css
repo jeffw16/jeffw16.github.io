@@ -534,6 +534,9 @@ input[readonly] { background: var(--surface-2); color: var(--text-2); cursor: de
 .tax-rows dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
 .tax-rows .total { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 1rem; }
 .tax-rows .total dt { color: var(--text); font-weight: 700; }
+.tax-rows[hidden] { display: none; }
+.tax-phase { margin: 12px 0 6px; font-size: 0.875rem; font-weight: 700; }
+.tax-phase[hidden] { display: none; }
 
 .modal-actions { position: sticky; bottom: -18px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin: 0 -20px -18px; padding: 12px 20px 18px; background: var(--surface); border-top: 1px solid var(--border); }
 .btn-primary {

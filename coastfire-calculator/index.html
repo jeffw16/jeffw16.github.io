@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your retirement accounts (401(k), 403(b), 457(b), TSP, IRA, HSA) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=88058eeffc">
+  <link rel="stylesheet" href="style.css?v=69c09084b9">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=88058eeffc"></script>
+  <script type="module" src="app.js?v=69c09084b9"></script>
 </head>
 <body>
   <main class="page">
@@ -168,11 +168,14 @@
             <div class="affix" data-suffix="%">
               <input id="swr" name="swr" type="number" inputmode="decimal" min="0.5" max="10" step="0.1" value="4">
             </div>
-            <p class="hint">4% is the classic "4% rule".</p>
+            <p class="hint" id="swrHint" aria-live="polite">4% is the classic "4% rule".</p>
+            <div class="tax-actions">
+              <button type="button" class="link-btn" id="useSwr" hidden>Use the guideline</button>
+            </div>
           </div>
 
           <div class="field">
-            <div class="label-row"><label for="taxRate">Effective tax rate on withdrawals</label><button type="button" class="info" popovertarget="tip-tax" aria-label="About the tax rate">i</button></div>
+            <div class="label-row"><label for="taxRate" id="taxRateLabel">Effective tax rate on withdrawals</label><button type="button" class="info" popovertarget="tip-tax" aria-label="About the tax rate">i</button></div>
             <div class="affix" data-suffix="%">
               <input id="taxRate" name="taxRate" type="number" inputmode="decimal" min="0" max="60" step="0.1" value="10">
             </div>
@@ -198,6 +201,22 @@
           <div class="field">
             <label for="benefitAge">Benefit starts at age</label>
             <input id="benefitAge" name="benefitAge" type="number" inputmode="numeric" min="50" max="100" step="1" value="67">
+          </div>
+
+          <div class="field" id="bridgeTaxField" hidden>
+            <label for="bridgeTaxRate">Tax rate before your benefit starts</label>
+            <div class="affix" data-suffix="%">
+              <input id="bridgeTaxRate" name="bridgeTaxRate" type="number" inputmode="decimal" min="0" max="60" step="0.1" value="10">
+            </div>
+            <p class="hint">If you retire before your benefit starts, withdrawals cover all your spending until it does, so they're taxed differently.</p>
+          </div>
+
+          <div class="field" id="bridgeReturnField" hidden>
+            <div class="label-row"><label for="bridgeReturn">Real return on bridge money</label><button type="button" class="info" popovertarget="tip-bridge-return" aria-label="About the bridge return">i</button></div>
+            <div class="affix" data-suffix="%">
+              <input id="bridgeReturn" name="bridgeReturn" type="number" inputmode="decimal" min="-5" max="20" step="0.1" value="2">
+            </div>
+            <p class="hint">For the money that covers the years before your benefit starts. About 2% is what a TIPS ladder pays; it's never more than your portfolio's return.</p>
           </div>
 
           <div class="field">
@@ -276,7 +295,10 @@
             <p class="hint">The part that comes from Roth money, HSA money spent on medical costs, or a taxable account's contributions, which isn't taxed.</p>
           </div>
 
+          <h3 class="tax-phase" id="taxPostHeading" hidden>Once your benefit starts</h3>
           <dl class="tax-rows" id="taxRows"></dl>
+          <h3 class="tax-phase" id="taxBridgeHeading" hidden>Before your benefit starts</h3>
+          <dl class="tax-rows" id="taxBridgeRows" hidden></dl>
           <p class="hint" id="taxModalNote"></p>
 
           <div class="modal-actions">
@@ -409,11 +431,11 @@
     </div>
     <div id="tip-fire" class="tip" popover>
       <h2>FIRE number</h2>
-      <p>The balance that can fund retirement: annual spending (grossed up for tax, less any Social Security or pension) divided by your safe withdrawal rate. Reach it and you can retire fully.</p>
+      <p>The balance that can fund retirement: annual spending (less any Social Security or pension, grossed up for tax) divided by your safe withdrawal rate, plus enough for any years before your benefit starts. Reach it and you can retire fully.</p>
     </div>
     <div id="tip-swr" class="tip" popover>
       <h2>Safe withdrawal rate</h2>
-      <p>The share of your portfolio you withdraw in the first year of retirement, then adjust for inflation. 4% has historically lasted about 30 years; use a lower rate for a longer retirement.</p>
+      <p>The share of your portfolio you withdraw in the first year of retirement, then adjust for inflation. 4% has historically lasted about 30 years; use a lower rate for a longer retirement. Below the field, the calculator suggests a rate for how long yours could last, planning to age 95: about 3.5% for 50 years and 3.3% for 60, from historical studies.</p>
     </div>
     <div id="tip-return" class="tip" popover>
       <h2>Real return</h2>
@@ -421,11 +443,15 @@
     </div>
     <div id="tip-tax" class="tip" popover>
       <h2>Tax on withdrawals</h2>
-      <p>A single average rate applied to withdrawals, since pre-tax money in a traditional 401(k), 403(b), 457(b), TSP or IRA is taxed as income. Spending is grossed up so you net the amount you entered. Use 0% for Roth money (HSA money spent on medical costs is tax-free too). The estimate below the field uses the 2025 federal brackets and standard deduction; open Fine-tune to change the filing status, add state tax or a tax-free share.</p>
+      <p>An average rate applied to withdrawals, since pre-tax money in a traditional 401(k), 403(b), 457(b), TSP or IRA is taxed as income. Spending is grossed up so you net the amount you entered. Use 0% for Roth money (HSA money spent on medical costs is tax-free too). The estimate below the field uses the 2025 federal brackets and standard deduction; open Fine-tune to change the filing status, add state tax or a tax-free share. With a Social Security or pension benefit, this rate applies once the benefit starts, and a second rate covers the years before it, when your withdrawals pay for everything.</p>
     </div>
     <div id="tip-bridge" class="tip" popover>
       <h2>Social Security bridge</h2>
       <p>If you retire before Social Security or a pension starts, your savings have to cover your full spending until they do. The calculator adds enough for those bridge years, then counts the benefit against spending afterward.</p>
+    </div>
+    <div id="tip-bridge-return" class="tip" popover>
+      <h2>Bridge return</h2>
+      <p>The bridge years before your benefit starts are a fixed bill that comes due early, so a market drop just after you retire could leave them short. The calculator prices them at a safe real return, as if you set that money aside in TIPS or similar bonds, instead of counting on your portfolio's average return. Raise it to your portfolio's return to accept that risk.</p>
     </div>
     <div id="tip-mega" class="tip" popover>
       <h2>Mega Backdoor Roth</h2>

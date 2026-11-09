@@ -6,8 +6,9 @@ import { requiredBalance, requiredBalanceFn } from "../coastfire-calculator/reti
 import { formatAge } from "../coastfire-calculator/format.js";
 
 const base = { age: 30, balance: 50_000, annualReturn: 0.07, retirementAge: 65 };
-// Default assumptions: $40k spending, 4% withdrawal, 10% tax, no benefit.
-const need = { spending: 40_000, taxRate: 0.1, swr: 0.04, benefit: 0, benefitAge: 67, annualReturn: 0.07 };
+// Default assumptions: $40k spending, 4% withdrawal, 10% tax (before and after any benefit),
+// no benefit, and bridge years priced at a 2% real return.
+const need = { spending: 40_000, taxRate: 0.1, bridgeTaxRate: 0.1, swr: 0.04, benefit: 0, benefitAge: 67, annualReturn: 0.07, bridgeReturn: 0.02 };
 const fire = Math.round(requiredBalance({ ...need, retireAge: 65 })); // 1,111,111
 const requiredAt = requiredBalanceFn(need, 65, fire);
 const money = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
@@ -942,5 +943,114 @@ test.describe("explanations", () => {
     await page.locator("#returnModel").selectOption("montecarlo");
     await page.getByRole("button", { name: "About the simulated chances" }).click();
     await expect(tip(page, "tip-success")).toContainText("1,000 simulated markets");
+  });
+});
+
+test.describe("bridge years before the benefit", () => {
+  test("bridge fields appear only with a benefit", async ({ page }) => {
+    await expect(page.locator("#bridgeTaxRate")).toBeHidden();
+    await expect(page.locator("#bridgeReturn")).toBeHidden();
+    await expect(page.locator("#taxRateLabel")).toHaveText("Effective tax rate on withdrawals");
+    await page.locator("#benefit").fill("20,000");
+    await expect(page.locator("#bridgeTaxRate")).toBeVisible();
+    await expect(page.locator("#bridgeReturn")).toHaveValue("2");
+    await expect(page.locator("#taxRateLabel")).toHaveText("Effective tax rate once your benefit starts");
+  });
+
+  test("the bridge return and bridge tax rate change the FIRE number", async ({ page }) => {
+    await page.locator("#retirementAge").fill("45");
+    await page.locator("#benefit").fill("20,000");
+    const at = (overrides) => Math.round(requiredBalance({ ...need, benefit: 20_000, retireAge: 45, ...overrides })).toLocaleString("en-US");
+    await expect(page.locator("#fire")).toHaveValue(at({}));
+    await page.locator("#bridgeReturn").fill("7");
+    await expect(page.locator("#fire")).toHaveValue(at({ bridgeReturn: 0.07 }));
+    await page.locator("#bridgeReturn").fill("2");
+    await page.locator("#bridgeTaxRate").fill("20");
+    await expect(page.locator("#fire")).toHaveValue(at({ bridgeTaxRate: 0.2 }));
+  });
+
+  test("the tax estimate gives a rate for each phase and fills both", async ({ page }) => {
+    await page.locator("#retirementAge").fill("45");
+    await page.locator("#benefit").fill("20,000");
+    await expect(page.locator("#taxEstimateText")).toContainText("Estimated 2.7% once your benefit starts and 7.1% before it");
+    await page.getByRole("button", { name: "Use these estimates" }).click();
+    await expect(page.locator("#taxRate")).toHaveValue("2.7");
+    await expect(page.locator("#bridgeTaxRate")).toHaveValue("7.1");
+    await expect(page.getByRole("button", { name: "Use these estimates" })).toBeHidden();
+    await expect(page.locator("#fire")).toHaveValue(
+      Math.round(requiredBalance({ ...need, benefit: 20_000, retireAge: 45, taxRate: 0.027, bridgeTaxRate: 0.071 })).toLocaleString("en-US"));
+  });
+
+  test("Fine-tune shows a breakdown for each phase", async ({ page }) => {
+    await page.locator("#retirementAge").fill("45");
+    await page.locator("#benefit").fill("20,000");
+    await page.getByRole("button", { name: "Fine-tune" }).click();
+    const dialog = page.getByRole("dialog", { name: "Estimate your tax rate" });
+    await expect(dialog.getByRole("heading", { name: "Before your benefit starts" })).toBeVisible();
+    const bridgeRow = (label) => dialog.locator("#taxBridgeRows > div", { hasText: label });
+    await expect(bridgeRow("Standard deduction")).toContainText("$15,750");
+    await expect(bridgeRow("Effective rate")).toContainText("7.1%");
+    await expect(dialog.locator("#taxRows > div", { hasText: "Standard deduction" })).toContainText("(incl. age 65+)");
+    await dialog.getByRole("button", { name: "Use these rates" }).click();
+    await expect(page.locator("#bridgeTaxRate")).toHaveValue("7.1");
+  });
+
+  test("without a bridge, the modal shows one breakdown", async ({ page }) => {
+    await page.getByRole("button", { name: "Fine-tune" }).click();
+    await expect(page.locator("#taxBridgeRows")).toBeHidden();
+    await expect(page.getByRole("heading", { name: "Before your benefit starts" })).toBeHidden();
+  });
+
+  test("a link carries the bridge tax rate only when it differs from the tax rate", async ({ page }) => {
+    await page.locator("#taxRate").fill("15");
+    await expect.poll(() => page.url()).toContain("taxRate=15");
+    await page.locator("#benefit").fill("20,000");
+    await page.locator("#bridgeTaxRate").fill("15");
+    await expect.poll(() => page.url()).not.toContain("bridgeTaxRate");
+    await page.locator("#bridgeTaxRate").fill("8");
+    await expect.poll(() => page.url()).toContain("bridgeTaxRate=8");
+  });
+
+  test("an old link without a bridge tax rate uses its tax rate", async ({ page }) => {
+    await page.goto(`${URL_PATH}?taxRate=15&benefit=20000`);
+    await expect(page.locator("#bridgeTaxRate")).toHaveValue("15");
+  });
+
+  test("an old save re-derives a FIRE number that priced the bridge at the portfolio return", async ({ page }) => {
+    const oldNeed = { ...need, benefit: 20_000, retireAge: 45, taxRate: 0.15, bridgeTaxRate: 0.15, bridgeReturn: undefined };
+    const oldFire = Math.round(requiredBalance(oldNeed)).toLocaleString("en-US");
+    const save = (fire) => page.evaluate(([fire]) => localStorage.setItem("coastfire-calculator:v1",
+      JSON.stringify({ version: 1, values: { retirementAge: "45", benefit: "20,000", taxRate: "15", fire } })), [fire]);
+    await save(oldFire);
+    await page.reload();
+    await expect(page.locator("#bridgeTaxRate")).toHaveValue("15");
+    await expect(page.locator("#fire")).toHaveValue(Math.round(requiredBalance({ ...oldNeed, bridgeReturn: 0.02 })).toLocaleString("en-US"));
+    // A hand-typed FIRE number is kept.
+    await save("900,000");
+    await page.reload();
+    await expect(page.locator("#fire")).toHaveValue("900,000");
+  });
+});
+
+test.describe("withdrawal-rate guideline", () => {
+  test("says nothing extra for a 30-year retirement", async ({ page }) => {
+    await expect(page.locator("#swrHint")).toHaveText('4% is the classic "4% rule".');
+    await expect(page.locator("#useSwr")).toBeHidden();
+  });
+
+  test("suggests a lower rate for an early retirement and applies it", async ({ page }) => {
+    await page.locator("#retirementAge").fill("45");
+    await expect(page.locator("#swrHint")).toContainText("Retiring at 45 could mean 50 years of withdrawals (to age 95). For that long, about 3.5% is a common guideline.");
+    await page.getByRole("button", { name: "Use 3.5%" }).click();
+    await expect(page.locator("#swr")).toHaveValue("3.5");
+    await expect(page.locator("#useSwr")).toBeHidden();
+    await expect(page.locator("#swrHint")).toContainText("at or below the 3.5% guideline");
+    await expect(page.locator("#fire")).toHaveValue(Math.round(requiredBalance({ ...need, swr: 0.035, retireAge: 45 })).toLocaleString("en-US"));
+  });
+
+  test("follows the target age in target mode", async ({ page }) => {
+    await page.locator('input[name="mode"][value="target"]').check();
+    await page.locator("#targetAge").fill("40");
+    await expect(page.locator("#swrHint")).toContainText("Retiring at 40 could mean 55 years");
   });
 });

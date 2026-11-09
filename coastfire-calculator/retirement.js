@@ -1,6 +1,6 @@
 // Pure helpers for how much a retiree needs in retirement accounts: taxes on withdrawals
 // and a Social Security / pension benefit that starts later. No DOM, no globals.
-import { monthlyRate } from "./calc.js?v=88058eeffc";
+import { monthlyRate } from "./calc.js?v=69c09084b9";
 
 /** Withdrawal needed to net `spending` after an effective tax rate. NaN for rates outside [0, 1). */
 export function grossWithdrawal(spending, taxRate) {
@@ -24,31 +24,59 @@ function bridgeMonths(benefitAge, retireAge) {
   return Math.round(Math.max(0, benefitAge - retireAge) * 12);
 }
 
+/** Default real return on money set aside for the bridge years: roughly the real yield of a TIPS ladder. */
+export const DEFAULT_BRIDGE_RETURN = 0.02;
+
+/**
+ * Real return used to fund the bridge years: `bridgeReturn`, but never above the
+ * portfolio's `annualReturn`. Without a `bridgeReturn` it is the portfolio return.
+ */
+export function bridgeRate(annualReturn, bridgeReturn) {
+  return Number.isFinite(bridgeReturn) ? Math.min(bridgeReturn, annualReturn) : annualReturn;
+}
+
 /**
  * Retirement balance needed to retire at `retireAge`.
  * The benefit offsets spending dollar for dollar; only withdrawals are
- * taxed. Before the benefit starts the balance pays the full spending (funded by
- * an annuity at the real return); afterwards it pays the shortfall at the
- * safe withdrawal rate.
+ * taxed. After the benefit starts the balance pays the shortfall, grossed up at
+ * `taxRate`, at the safe withdrawal rate. Before it starts the balance pays the
+ * full spending, grossed up at `bridgeTaxRate` (default `taxRate`): the part
+ * above the safe-withdrawal draw is funded as an annuity at `bridgeRate`, a
+ * safe real return rather than the portfolio's expected one, since those
+ * dollars must be there whatever markets do.
  */
-export function requiredBalance({ spending, taxRate, swr, benefit = 0, benefitAge = 67, retireAge, annualReturn }) {
+export function requiredBalance({ spending, taxRate, bridgeTaxRate = taxRate, swr, benefit = 0, benefitAge = 67, retireAge, annualReturn, bridgeReturn }) {
   if (!(swr > 0)) return NaN;
-  const wPre = grossWithdrawal(spending, taxRate);
   const wPost = grossWithdrawal(Math.max(0, spending - benefit), taxRate);
-  const bridge = annuityFactor(annualReturn, bridgeMonths(benefitAge, retireAge));
-  return wPost / swr + (wPre - wPost) * bridge;
+  // Without a benefit there are no bridge years: the safe-withdrawal draw covers everything.
+  const months = benefit > 0 ? bridgeMonths(benefitAge, retireAge) : 0;
+  if (months === 0) return wPost / swr;
+  const wPre = grossWithdrawal(spending, bridgeTaxRate);
+  const bridge = annuityFactor(bridgeRate(annualReturn, bridgeReturn), months);
+  return wPost / swr + Math.max(0, wPre - wPost) * bridge;
 }
 
 /**
  * Annual spending that makes `requiredBalance` equal `required` (its inverse in
- * spending). NaN when no spending maps to that balance.
+ * spending), found by bisection. NaN when no spending maps to that balance.
  */
-export function spendingFromRequired({ required, taxRate, swr, benefit = 0, benefitAge = 67, retireAge, annualReturn }) {
-  if (!(swr > 0) || !(taxRate >= 0 && taxRate < 1) || !(required >= 0)) return NaN;
-  const k = 1 - taxRate;
-  const a = annuityFactor(annualReturn, bridgeMonths(benefitAge, retireAge));
-  if (k * required >= benefit * a) return benefit + (k * required - benefit * a) * swr;
-  return a > 0 ? (k * required) / a : NaN;
+export function spendingFromRequired({ required, ...need }) {
+  const { swr, taxRate, bridgeTaxRate = taxRate } = need;
+  const validRate = (t) => t >= 0 && t < 1;
+  if (!(swr > 0) || !validRate(taxRate) || !validRate(bridgeTaxRate) || !(required >= 0)) return NaN;
+  const at = (spending) => requiredBalance({ ...need, spending });
+  // A started benefit covers any spending up to it; otherwise only zero spending needs nothing.
+  if (required === 0) return need.benefitAge <= need.retireAge ? need.benefit ?? 0 : 0;
+  let lo = 0;
+  let hi = Math.max(1, need.benefit ?? 0) * 2;
+  for (let k = 0; k < 200 && at(hi) < required; k++) hi *= 2;
+  if (!(at(hi) >= required)) return NaN;
+  for (let k = 0; k < 200 && hi - lo > 1e-9 * Math.max(1, hi); k++) {
+    const mid = (lo + hi) / 2;
+    if (at(mid) < required) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
 }
 
 /** True when a benefit that has started by retirement covers all spending, so no retirement balance is needed. */
@@ -74,4 +102,34 @@ export const EARLY_ACCESS_AGE = 59.5;
 export function earlyAccessGuidance(retireAge) {
   if (retireAge >= EARLY_ACCESS_AGE) return "none";
   return retireAge >= 55 ? "rule-of-55" : "before-55";
+}
+
+// Withdrawal-rate guidelines by retirement length. The 4% rule comes from 30-year
+// retirements (Bengen 1994; the Trinity study, 1998); for longer horizons, historical
+// studies such as Early Retirement Now's "Safe Withdrawal Rate Series" (2016-)
+// put the rate that survived nearly every historical start year at about 3.25-3.5%
+// for 50-60 years. [years of retirement, rate], shortest first; rates between rows
+// are interpolated and the last row holds beyond it.
+export const SWR_GUIDELINES = Object.freeze([[30, 0.04], [40, 0.037], [50, 0.035], [60, 0.033]]);
+/** Age the withdrawal-rate guideline plans to. */
+export const PLAN_TO_AGE = 95;
+
+/**
+ * Suggested safe withdrawal rate for retiring at `retireAge` and planning to
+ * `planToAge`, rounded to 0.1 percentage point. 4% for 30 years or less.
+ */
+export function suggestedWithdrawalRate(retireAge, planToAge = PLAN_TO_AGE) {
+  const years = planToAge - retireAge;
+  if (!Number.isFinite(years)) return NaN;
+  const rows = SWR_GUIDELINES;
+  let rate = rows.at(-1)[1];
+  if (years <= rows[0][0]) rate = rows[0][1];
+  else {
+    for (let k = 1; k < rows.length; k++) {
+      const [y0, r0] = rows[k - 1];
+      const [y1, r1] = rows[k];
+      if (years <= y1) { rate = r0 + ((years - y0) / (y1 - y0)) * (r1 - r0); break; }
+    }
+  }
+  return Math.round(rate * 1000) / 1000;
 }

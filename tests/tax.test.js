@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   BRACKETS, STANDARD_DEDUCTION, FILING_STATUSES, TAX_YEAR,
-  federalTax, standardDeduction, taxableSocialSecurity, taxBreakdown, estimateRate,
+  federalTax, standardDeduction, taxableSocialSecurity, taxBreakdown, estimateRate, estimateRates,
 } from "../coastfire-calculator/tax.js";
 
 const near = (a, b, tol = 1e-6) => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b}`);
@@ -151,5 +151,44 @@ describe("estimateRate", () => {
   });
   it("is 0 below the standard deduction", () => {
     assert.equal(estimateRate({ spending: 12000 }).rate, 0);
+  });
+});
+
+describe("estimateRates", () => {
+  const base = { spending: 40_000, benefit: 20_000, benefitAge: 67, retireAge: 45 };
+  it("estimates the bridge years without the benefit, before 65", () => {
+    const r = estimateRates(base);
+    assert.equal(r.hasBridge, true);
+    near(r.bridgeRate, estimateRate({ spending: 40_000 }).rate);
+    assert.equal(r.bridge.over65, false);
+  });
+  it("estimates the later years with the benefit and the 65+ deduction", () => {
+    const r = estimateRates(base);
+    near(r.rate, estimateRate({ spending: 40_000, benefit: 20_000, over65: true }).rate);
+    assert.equal(r.post.over65, true);
+  });
+  it("gives different rates for the two phases (regression: one rate was used for both)", () => {
+    // $40k/$20k: 2.7% once the benefit starts but 7.1% before it.
+    const low = estimateRates(base);
+    near(low.rate, 0.0272, 1e-3);
+    near(low.bridgeRate, 0.0705, 1e-3);
+    // $80k/$30k: taxable Social Security pushes the later rate above the bridge rate.
+    const high = estimateRates({ ...base, spending: 80_000, benefit: 30_000 });
+    assert.ok(high.rate > high.bridgeRate);
+  });
+  it("has no bridge without a benefit, or with one that has started", () => {
+    for (const r of [estimateRates({ ...base, benefit: 0 }), estimateRates({ ...base, benefitAge: 62, retireAge: 65 })]) {
+      assert.equal(r.hasBridge, false);
+      assert.equal(r.bridgeRate, r.rate);
+    }
+  });
+  it("passes filing status, state tax and the tax-free share to both phases", () => {
+    const opts = { status: "married", stateRate: 0.05, taxFreeShare: 0.3 };
+    const r = estimateRates({ ...base, ...opts });
+    near(r.bridgeRate, estimateRate({ spending: 40_000, ...opts }).rate);
+    near(r.rate, estimateRate({ spending: 40_000, benefit: 20_000, over65: true, ...opts }).rate);
+  });
+  it("uses the 65+ deduction for a bridge that starts at 65 or later", () => {
+    assert.equal(estimateRates({ ...base, retireAge: 65 }).bridge.over65, true);
   });
 });
