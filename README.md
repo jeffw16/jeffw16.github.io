@@ -46,7 +46,10 @@ itemized deductions and state deductions are not modeled.
 
 The Social Security field can be filled by an "Estimate Social Security…" modal: your typical earnings, the age
 you started working and your claiming age go through the 2026 SSA benefit formula (sources in `socialsecurity.js`),
-counting zero-earning years if you retire before 35 years of work. It covers your own retirement benefit only.
+counting zero-earning years if you retire before 35 years of work. The formula rises with average wages, so the
+estimate grows the benefit by a real wage growth (1% a year by default) until you turn 62, assuming your earnings keep
+pace with average wages. An optional cut applies the 77% of benefits projected to be payable once the retirement trust
+fund runs out in 2033 (2025 Trustees Report) to the whole benefit. It covers your own retirement benefit only.
 
 Code layout: pure, unit-tested modules (`calc.js`, `retirement.js`, `limits.js`, `scenario.js`,
 `montecarlo.js`, `history.js`, `tax.js`, `socialsecurity.js`, `risk.js`, `format.js`, `persist.js`) and `app.js` for all DOM, storage and URL wiring; the

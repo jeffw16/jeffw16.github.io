@@ -850,13 +850,16 @@ test.describe("Social Security estimate", () => {
     await dialog.getByLabel("Typical yearly earnings").fill("60000");
     await expect(row(dialog, "Years of earnings")).toContainText("43");
     await expect(row(dialog, "Average monthly earnings")).toContainText("$5,000");
+    await expect(row(dialog, "full retirement age")).toContainText("today's formula");
     await expect(row(dialog, "full retirement age")).toContainText("$2,346");
-    await expect(row(dialog, "Monthly benefit").last()).toContainText("$2,345");
-    await expect(row(dialog, "Yearly benefit")).toContainText("$28,140");
+    // The default 1% real wage growth raises a 30-year-old's benefit for 32 years.
+    await expect(row(dialog, "Growth with real wages until 62 (32 years at 1%)")).toContainText("+37.5%");
+    await expect(row(dialog, "Monthly benefit").last()).toContainText("$3,225");
+    await expect(row(dialog, "Yearly benefit")).toContainText("$38,700");
     await dialog.getByRole("button", { name: "Use this benefit" }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.locator("#benefit")).toHaveValue("28,140");
-    const withBenefit = { ...need, benefit: 28_140 };
+    await expect(page.locator("#benefit")).toHaveValue("38,700");
+    const withBenefit = { ...need, benefit: 38_700 };
     const expected = Math.round(requiredBalance({ ...withBenefit, retireAge: 65 }));
     await expect(page.locator("#fire")).toHaveValue(expected.toLocaleString("en-US"));
   });
@@ -867,7 +870,35 @@ test.describe("Social Security estimate", () => {
     const dialog = await open(page);
     await expect(row(dialog, "Years of earnings")).toContainText("25");
     await expect(dialog.locator("#ssNote")).toContainText("zeros");
-    await expect(row(dialog, "Yearly benefit")).not.toContainText("$28,140");
+    await expect(row(dialog, "Yearly benefit")).not.toContainText("$38,700");
+  });
+
+  test("0% wage growth uses today's formula as is", async ({ page }) => {
+    const dialog = await open(page);
+    await dialog.getByLabel("Typical yearly earnings").fill("60000");
+    await dialog.getByLabel("Real wage growth per year").fill("0");
+    await expect(row(dialog, "Growth with real wages")).toHaveCount(0);
+    await expect(row(dialog, "Yearly benefit")).toContainText("$28,140");
+  });
+
+  test("the trust-fund cut lowers the benefit to 77% and is shown", async ({ page }) => {
+    const dialog = await open(page);
+    await dialog.getByLabel("Typical yearly earnings").fill("60000");
+    await dialog.getByLabel("Plan for a cut if the trust fund runs out").check();
+    await expect(dialog.locator("#ssCutHint")).toContainText("run out in 2033");
+    await expect(row(dialog, "Monthly benefit as scheduled")).toContainText("$3,225");
+    await expect(row(dialog, "Cut if the trust fund runs out (to 77%)")).toContainText("-$742");
+    await expect(row(dialog, "Yearly benefit")).toContainText("$29,796");
+    await dialog.getByRole("button", { name: "Use this benefit" }).click();
+    await expect(page.locator("#benefit")).toHaveValue("29,796");
+  });
+
+  test("an older user gets less wage growth, none from 62", async ({ page }) => {
+    await page.locator("#age").fill("62");
+    await page.locator("#balance").fill("500,000");
+    const dialog = await open(page);
+    await dialog.getByLabel("Typical yearly earnings").fill("60000");
+    await expect(row(dialog, "Growth with real wages")).toHaveCount(0);
   });
 
   test("claiming age changes the amount; ages outside 62-70 explain themselves", async ({ page }) => {
@@ -893,15 +924,21 @@ test.describe("Social Security estimate", () => {
     const dialog = await open(page);
     await dialog.getByLabel("Typical yearly earnings").fill("85000");
     await dialog.getByLabel("Age you started working").fill("25");
+    await dialog.getByLabel("Real wage growth per year").fill("0.5");
+    await dialog.getByLabel("Plan for a cut if the trust fund runs out").check();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     await expect(page.getByRole("button", { name: "Estimate Social Security" })).toBeFocused();
     await page.reload();
     await expect(page.locator("#ssEarnings")).toHaveValue("85,000");
     await expect(page.locator("#ssStartAge")).toHaveValue("25");
+    await expect(page.locator("#ssWageGrowth")).toHaveValue("0.5");
+    await expect(page.locator("#ssCut")).toBeChecked();
     await page.locator("#reset").click();
     await expect(page.locator("#ssEarnings")).toHaveValue("");
     await expect(page.locator("#ssStartAge")).toHaveValue("22");
+    await expect(page.locator("#ssWageGrowth")).toHaveValue("1");
+    await expect(page.locator("#ssCut")).not.toBeChecked();
   });
 });
 
