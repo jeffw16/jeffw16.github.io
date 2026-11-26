@@ -17,7 +17,8 @@ jobs:
       - run: npm test
 
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: Playwright 1.56.1 cannot install browser deps on ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
