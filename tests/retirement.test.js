@@ -8,6 +8,7 @@ import {
   benefitCoversSpending,
   requiredBalanceFn,
   earlyAccessGuidance,
+  earlyAccessNeed,
   EARLY_ACCESS_AGE,
   bridgeRate,
   DEFAULT_BRIDGE_RETURN,
@@ -283,5 +284,45 @@ describe("earlyAccessGuidance", () => {
   it("is before-55 below 55", () => {
     assert.equal(earlyAccessGuidance(54.9), "before-55");
     assert.equal(earlyAccessGuidance(40), "before-55");
+  });
+});
+
+describe("earlyAccessNeed", () => {
+  const p = { spending: 40_000, taxRate: 0.1, swr: 0.04, retireAge: 45, annualReturn: 0.068, bridgeReturn: 0.02, age: 30 };
+  it("is zero from 59½ on", () => {
+    for (const retireAge of [59.5, 62, 70]) {
+      const e = earlyAccessNeed({ ...p, retireAge, accessible: 10_000 });
+      assert.equal(e.months, 0);
+      assert.equal(e.needed, 0);
+      assert.equal(e.shortfall, 0);
+    }
+  });
+  it("funds the gross spending until 59½ at the bridge rate", () => {
+    const e = earlyAccessNeed(p);
+    assert.equal(e.months, 174);
+    close(e.needed, (40_000 / 0.9) * annuityFactor(0.02, 174));
+  });
+  it("uses the bridge tax rate before a benefit and the main rate after it", () => {
+    // A pension from 55: full spending at the bridge rate until then, the shortfall afterward.
+    const e = earlyAccessNeed({ ...p, benefit: 15_000, benefitAge: 55, bridgeTaxRate: 0.05 });
+    const before = annuityFactor(0.02, 120);
+    close(e.needed, (40_000 / 0.95) * before + (25_000 / 0.9) * (annuityFactor(0.02, 174) - before));
+  });
+  it("ignores a Social Security benefit that starts after 59½", () => {
+    close(earlyAccessNeed({ ...p, benefit: 20_000, benefitAge: 67, bridgeTaxRate: 0.1 }).needed, earlyAccessNeed(p).needed);
+  });
+  it("grows the accessible savings at the portfolio return and reports the shortfall", () => {
+    const e = earlyAccessNeed({ ...p, accessible: 50_000 });
+    close(e.accessibleAtRetirement, 50_000 * 1.068 ** 15);
+    close(e.shortfall, e.needed - e.accessibleAtRetirement);
+  });
+  it("has no shortfall when accessible savings cover the need", () => {
+    const e = earlyAccessNeed({ ...p, accessible: 400_000 });
+    assert.ok(e.accessibleAtRetirement > e.needed);
+    assert.equal(e.shortfall, 0);
+  });
+  it("defaults the portfolio return when there is no bridge return", () => {
+    const { bridgeReturn, ...noBridge } = p;
+    close(earlyAccessNeed(noBridge).needed, (40_000 / 0.9) * annuityFactor(0.068, 174));
   });
 });

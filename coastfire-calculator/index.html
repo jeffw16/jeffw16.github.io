@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CoastFIRE Calculator</title>
   <meta name="description" content="Find out when you can stop contributing to your retirement accounts (401(k), 403(b), 457(b), TSP, IRA, HSA) and coast to retirement, or how much you need to contribute to retire at a given age.">
-  <link rel="stylesheet" href="style.css?v=1e76cdf33f">
+  <link rel="stylesheet" href="style.css?v=aea5148f5a">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous" defer></script>
-  <script type="module" src="app.js?v=1e76cdf33f"></script>
+  <script type="module" src="app.js?v=aea5148f5a"></script>
 </head>
 <body>
   <main class="page">
@@ -220,6 +220,14 @@
           </div>
 
           <div class="field">
+            <label for="earlyAccessible">Savings you can use before 59½</label>
+            <div class="affix" data-prefix="$">
+              <input id="earlyAccessible" name="earlyAccessible" type="text" inputmode="decimal" autocomplete="off" data-amount value="0">
+            </div>
+            <p class="hint">Optional. The part of your current balance in a taxable account, or Roth IRA contributions, which you can withdraw before 59½ without the 10% penalty. Used only to check early retirements.</p>
+          </div>
+
+          <div class="field">
             <label for="fire">FIRE number</label>
             <div class="affix" data-prefix="$">
               <input id="fire" name="fire" type="text" inputmode="decimal" autocomplete="off" data-amount value="1,111,111">
@@ -399,6 +407,7 @@
 
         <p id="summary" class="summary"></p>
         <p id="earlyNote" class="note" role="note" hidden></p>
+        <p id="earlyNeed" class="note" role="note" hidden></p>
         <p id="limitWarning" class="note warn" role="note" hidden></p>
         <p id="megaWarning" class="note warn" role="note" hidden></p>
 
